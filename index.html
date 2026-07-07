@@ -230,8 +230,8 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <input id="aVal" type="number" inputmode="decimal" placeholder="輸入金額">
       </div>
       <div id="fSymbol" class="hidden">
-        <label for="aSymbol" id="lblSymbol">幣種 ID</label>
-        <input id="aSymbol" placeholder="cardano">
+        <label for="aSymbol" id="lblSymbol">幣種代號</label>
+        <input id="aSymbol" placeholder="ADA">
       </div>
       <div id="fQty" class="hidden">
         <label for="aQty" id="lblQty">持有數量</label>
@@ -245,8 +245,10 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <label for="aCostFx">成本匯率（選填，留空用最新匯率）</label>
         <input id="aCostFx" type="number" inputmode="decimal" placeholder="例如 32.5">
       </div>
-      <label for="aCost">成本／本金（新台幣總額，可留空。填了會顯示損益）</label>
-      <input id="aCost" type="number" inputmode="decimal" placeholder="輸入成本金額">
+      <div id="fCost">
+        <label for="aCost">成本／本金（新台幣，可留空。填了會顯示損益）</label>
+        <input id="aCost" type="number" inputmode="decimal" placeholder="輸入成本金額">
+      </div>
       <div class="hint" id="modeHint"></div>
       <div style="display:flex; gap:10px; margin-top:16px">
         <button id="btnSaveAsset">儲存</button>
@@ -458,6 +460,29 @@ async function save() {
 }
 
 /* ---------- 自動報價 ---------- */
+/* 幣種代號 → CoinGecko ID：常見幣內建，其餘自動查詢並快取 */
+const SYM2ID = {
+  btc:"bitcoin", eth:"ethereum", ada:"cardano", sol:"solana", xrp:"ripple",
+  doge:"dogecoin", bnb:"binancecoin", ltc:"litecoin", dot:"polkadot", link:"chainlink",
+  avax:"avalanche-2", shib:"shiba-inu", trx:"tron", uni:"uniswap", atom:"cosmos",
+  xlm:"stellar", etc:"ethereum-classic", bch:"bitcoin-cash", near:"near", apt:"aptos",
+  arb:"arbitrum", op:"optimism", sui:"sui", ton:"the-open-network", pepe:"pepe",
+  usdt:"tether", usdc:"usd-coin", hbar:"hedera-hashgraph", fil:"filecoin", icp:"internet-computer"
+};
+async function resolveCoinId(sym) {
+  const s = sym.trim().toLowerCase();
+  if (SYM2ID[s]) return SYM2ID[s];
+  data.symMap ||= {};
+  if (data.symMap[s]) return data.symMap[s];
+  try {
+    const r = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(s)}`);
+    const j = await r.json();
+    const hit = (j.coins||[]).find(c => (c.symbol||"").toLowerCase() === s) || (j.coins||[]).find(c => c.id === s);
+    if (hit) { data.symMap[s] = hit.id; return hit.id; }
+  } catch {}
+  return s;   // 當作 CoinGecko ID 直接試（例如舊資料存的 cardano）
+}
+
 async function refreshQuotes(showToast = true) {
   const autos = data.assets.filter(a => a.mode && a.mode !== "manual");
   if (!autos.length) { if (showToast) toast("沒有設定自動更新的資產"); renderAll(); return; }
@@ -465,12 +490,15 @@ async function refreshQuotes(showToast = true) {
   btns.forEach(b => { b.disabled = true; b.textContent = "更新中…"; });
   const issues = [];
   try {
-    // 1) 加密貨幣（CoinGecko，直接抓台幣價）
-    const cryptoIds = [...new Set(autos.filter(a => a.mode === "crypto").map(a => (a.symbol||"").trim().toLowerCase()).filter(Boolean))];
+    // 1) 加密貨幣（CoinGecko，代號自動解析，直接抓台幣價）
+    const cryptoSyms = [...new Set(autos.filter(a => a.mode === "crypto").map(a => (a.symbol||"").trim().toLowerCase()).filter(Boolean))];
+    const idBySym = {};
+    for (const s of cryptoSyms) idBySym[s] = await resolveCoinId(s);
     let cg = {};
-    if (cryptoIds.length) {
+    if (cryptoSyms.length) {
       try {
-        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptoIds.join(",")}&vs_currencies=twd`);
+        const ids = [...new Set(Object.values(idBySym))];
+        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=twd`);
         cg = await r.json();
       } catch { issues.push("加密貨幣報價"); }
     }
@@ -534,9 +562,10 @@ async function refreshQuotes(showToast = true) {
         const p = stockPrices[(a.symbol||"").trim().toUpperCase()];
         if (p && fx) a.value = p * (+a.qty || 0) * fx;
       }
-      // 美元單位成本、未鎖定成本匯率 → 用最新匯率換算總成本
-      if ((a.mode === "crypto" || a.mode === "stock") && +a.costPer > 0 && !(+a.costFx > 0) && fx) {
-        a.cost = a.costPer * (+a.qty || 0) * fx;
+      // 美元計價成本、未鎖定成本匯率 → 用最新匯率換算本金
+      if (+a.costPer > 0 && !(+a.costFx > 0) && fx) {
+        if (a.mode === "crypto" || a.mode === "stock") a.cost = a.costPer * (+a.qty || 0) * fx;
+        else if (a.mode === "usd") a.cost = a.costPer * fx;
       }
     }
     data.quotes = { updated: new Date().toISOString(), fx: fx || data.quotes?.fx || null };
@@ -681,25 +710,28 @@ function renderAssets() {
 
 /* ---------- 表單：模式切換 ---------- */
 const MODE_HINTS = {
-  manual: "自己輸入現值，價格不會自動變動。",
-  crypto: "幣種 ID 用 CoinGecko 的英文 ID：例如 cardano、bitcoin、ethereum、solana。成本可直接填「每單位成本（美元）」，會自動 × 數量 × 匯率換成台幣。",
-  tw: "填台股代號（例：2330、0050）與股數。上市、上櫃都支援，每天收盤後自動更新，免金鑰。成本填「每股成本」或「總成本」擇一。",
-  usd: "填美元總金額（例如美股帳戶總值），App 每天用當日匯率換算成台幣。股價變動時記得回來改美元金額。",
-  stock: "填美股代號（例：AAPL、TSLA）與股數，自動抓股價 × 匯率。需要先到「設定」貼上 Finnhub 免費金鑰。成本可直接填「每股成本（美元）」。"
+  manual: "自己輸入現值與本金，價格不會自動變動。",
+  crypto: "填幣種代號（例：ADA、BTC、ETH、SOL），自動抓台幣報價。本金 = 單位成本 × 數量 × 匯率，自動算。",
+  tw: "台股代號（例：2330、0050），上市上櫃都支援，每天收盤後自動更新。本金 = 每股成本 × 股數，自動算。",
+  usd: "現值填美元總金額（例如券商帳戶總值），每天依匯率換算台幣。本金 = 美元成本 × 匯率，自動算。現值變動記得回來改。",
+  stock: "美股代號（例：AAPL、TSLA），自動抓股價 × 匯率，需在「設定」貼 Finnhub 免費金鑰。本金 = 每股成本 × 股數 × 匯率，自動算。"
 };
 function applyMode(mode){
   $("fVal").classList.toggle("hidden", mode !== "manual");
+  $("fCost").classList.toggle("hidden", mode !== "manual");
   $("fSymbol").classList.toggle("hidden", !(mode === "crypto" || mode === "stock" || mode === "tw"));
   $("fQty").classList.toggle("hidden", mode === "manual");
-  $("fCostPer").classList.toggle("hidden", !(mode === "tw" || mode === "crypto" || mode === "stock"));
-  $("fCostFx").classList.toggle("hidden", !(mode === "crypto" || mode === "stock"));
+  $("fCostPer").classList.toggle("hidden", mode === "manual");
+  $("fCostFx").classList.toggle("hidden", !(mode === "crypto" || mode === "stock" || mode === "usd"));
   $("lblCostPer").textContent =
     mode === "tw" ? "每股成本（台幣／股，選填）" :
     mode === "stock" ? "每股成本（美元／股，選填）" :
+    mode === "usd" ? "成本（美元總額，選填）" :
     "每單位成本（美元／顆，選填）";
-  $("lblSymbol").textContent = mode === "stock" ? "美股代號" : (mode === "tw" ? "台股代號" : "幣種 ID（CoinGecko）");
-  $("aSymbol").placeholder = mode === "stock" ? "AAPL" : (mode === "tw" ? "2330" : "cardano");
-  $("lblQty").textContent = mode === "usd" ? "美元金額（USD）" : ((mode === "stock" || mode === "tw") ? "股數" : "持有數量（顆）");
+  $("aCostPer").placeholder = mode === "usd" ? "輸入美元總成本" : "輸入單位買入價";
+  $("lblSymbol").textContent = mode === "stock" ? "美股代號" : (mode === "tw" ? "台股代號" : "幣種代號");
+  $("aSymbol").placeholder = mode === "stock" ? "AAPL" : (mode === "tw" ? "2330" : "ADA");
+  $("lblQty").textContent = mode === "usd" ? "目前價值（美元）" : ((mode === "stock" || mode === "tw") ? "股數" : "持有數量（顆）");
   $("modeHint").textContent = MODE_HINTS[mode] || "";
 }
 $("aMode").onchange = () => applyMode($("aMode").value);
@@ -733,27 +765,32 @@ function resetForm() {
 $("btnSaveAsset").onclick = async () => {
   const name = $("aName").value.trim();
   const mode = $("aMode").value;
-  const cost = $("aCost").value === "" ? null : +$("aCost").value;
   if (!name) { toast("請填名稱"); return; }
 
-  const obj = { name, type: $("aType").value, mode, cost };
-  obj.costPer = null; obj.costFx = null;
+  const obj = { name, type: $("aType").value, mode, cost: null, costPer: null, costFx: null };
   if (mode === "manual") {
     const value = +$("aVal").value;
     if (!(value >= 0)) { toast("請填目前價值"); return; }
     obj.value = value; obj.symbol = null; obj.qty = null;
+    obj.cost = $("aCost").value === "" ? null : +$("aCost").value;
   } else {
     const qty = +$("aQty").value;
-    if (!(qty > 0)) { toast(mode === "usd" ? "請填美元金額" : "請填數量"); return; }
+    if (!(qty > 0)) { toast(mode === "usd" ? "請填目前美元價值" : "請填數量"); return; }
     obj.qty = qty;
     const costPer = $("aCostPer").value === "" ? null : +$("aCostPer").value;
     const costFx  = $("aCostFx").value === "" ? null : +$("aCostFx").value;
-    if (mode === "tw" && costPer > 0) {
-      obj.costPer = costPer; obj.cost = costPer * qty;              // 台幣：每股成本 × 股數
-    } else if ((mode === "crypto" || mode === "stock") && costPer > 0) {
-      obj.costPer = costPer; obj.costFx = costFx > 0 ? costFx : null;
-      if (costFx > 0) obj.cost = costPer * qty * costFx;            // 美元：單位成本 × 數量 × 成本匯率
-      else obj.cost = null;                                          // 沒填匯率 → 更新報價時用最新匯率算
+    if (costPer > 0) {
+      obj.costPer = costPer;
+      if (mode === "tw") {
+        obj.cost = costPer * qty;                                    // 台幣：每股成本 × 股數
+      } else if (mode === "usd") {
+        obj.costFx = costFx > 0 ? costFx : null;
+        obj.cost = costFx > 0 ? costPer * costFx : null;             // 美元總成本 × 匯率
+      } else {
+        obj.costFx = costFx > 0 ? costFx : null;
+        obj.cost = costFx > 0 ? costPer * qty * costFx : null;       // 單位成本 × 數量 × 匯率
+      }
+      // 沒填匯率的美元成本 → 更新報價時用最新匯率算
     }
     if (mode === "crypto" || mode === "stock" || mode === "tw") {
       const symbol = $("aSymbol").value.trim();
