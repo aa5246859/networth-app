@@ -19,7 +19,7 @@
 :root{
   --bg:#101614; --card:#18211C; --card2:#1E2923; --line:#2A362F;
   --ink:#F0EDE4; --mut:#8C988F; --gold:#E3B34C; --gold-dim:#8A6E33;
-  --up:#E4574C; --down:#4CAF7D;
+  --gain:#4ADE80; --loss:#F87171; --danger:#E4574C;
   --radius:16px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -49,7 +49,7 @@ main{padding:4px 16px 24px; max-width:520px; margin:0 auto}
 .eyebrow{font-size:.7rem; letter-spacing:.18em; color:var(--mut); margin-bottom:6px}
 .big{font-size:2.1rem; font-weight:700; line-height:1.1}
 .sub{font-size:.8rem; color:var(--mut); margin-top:4px}
-.gold{color:var(--gold)} .up{color:var(--up)} .down{color:var(--down)}
+.gold{color:var(--gold)} .up{color:var(--gain)} .down{color:var(--loss)}
 
 /* 千格進度：10 格，每格 100 萬 */
 .ladder{display:grid; grid-template-columns:repeat(10,1fr); gap:5px; margin:14px 0 6px}
@@ -62,14 +62,16 @@ main{padding:4px 16px 24px; max-width:520px; margin:0 auto}
 .stat .v{font-size:1.15rem; font-weight:700; margin-top:2px}
 .stat .k{font-size:.7rem; color:var(--mut); letter-spacing:.06em}
 
-.row{display:flex; align-items:center; justify-content:space-between; padding:13px 0; border-bottom:1px solid var(--line)}
+.row{display:flex; align-items:center; justify-content:space-between; padding:13px 0; border-bottom:1px solid var(--line); gap:10px}
 .row:last-child{border-bottom:none}
 .row .name{font-weight:500}
 .row .tag{font-size:.68rem; color:var(--mut); border:1px solid var(--line); border-radius:99px; padding:2px 8px; margin-left:8px}
-.row .val{font-weight:700}
+.row .val{font-weight:700; text-align:right}
+.row .pl{font-size:.72rem; margin-top:2px; text-align:right}
+.row-meta{font-size:.7rem; color:var(--mut); margin-top:3px}
 .row-actions{display:flex; gap:14px; margin-top:4px; font-size:.72rem}
 .row-actions a{color:var(--mut); text-decoration:none}
-.row-actions a.del{color:var(--up)}
+.row-actions a.del{color:var(--danger)}
 
 button, .btn{
   font-family:inherit; font-size:.95rem; font-weight:700;
@@ -78,15 +80,19 @@ button, .btn{
 }
 button:active{transform:scale(.985)}
 .btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line)}
-.btn-sm{width:auto; padding:9px 14px; font-size:.8rem}
+.btn-sm{width:auto; padding:8px 14px; font-size:.78rem}
 button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.linkbtn{background:none; border:none; color:var(--gold); font-size:.75rem; font-weight:700; width:auto; padding:0; cursor:pointer; text-decoration:underline}
 
 label{display:block; font-size:.75rem; color:var(--mut); margin:14px 0 6px}
 input,select{
-  width:100%; background:var(--card2); border:1px solid var(--line); border-radius:10px;
+  width:100%; min-width:0; max-width:100%; background:var(--card2); border:1px solid var(--line); border-radius:10px;
   color:var(--ink); font-family:inherit; font-size:1rem; padding:12px;
 }
-input[type=date]{color-scheme:dark}
+input[type=date]{
+  color-scheme:dark; display:block; -webkit-appearance:none; appearance:none;
+  min-height:49px; text-align:left;
+}
 
 nav{
   position:fixed; left:0; right:0; bottom:0;
@@ -115,7 +121,7 @@ nav a.on{color:var(--gold)}
   position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
   background:var(--ink); color:#151208; font-size:.82rem; font-weight:700;
   padding:10px 18px; border-radius:99px; opacity:0; pointer-events:none; transition:opacity .25s;
-  z-index:50; white-space:nowrap;
+  z-index:50; max-width:88vw; text-align:center;
 }
 #toast.show{opacity:1}
 .spark{width:100%; height:120px; margin-top:8px}
@@ -153,8 +159,13 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       <div class="eyebrow">目前總資產</div>
       <div class="big num" id="totalNow">—</div>
       <div class="sub" id="totalSub"></div>
+      <div class="sub" id="plSub"></div>
       <div class="ladder" id="ladder" aria-label="進度：每格代表 100 萬"></div>
-      <div class="ladder-cap"><span>0</span><span>每格 = 100 萬</span><span class="gold">1,000 萬</span></div>
+      <div class="ladder-cap"><span>0</span><span id="ladderPer"></span><span class="gold" id="ladderGoal"></span></div>
+      <div class="hint" style="display:flex; justify-content:space-between; align-items:center">
+        <span id="quoteInfo">報價尚未更新</span>
+        <button class="linkbtn" id="btnRefreshHome">↻ 更新報價</button>
+      </div>
     </div>
 
     <div class="card">
@@ -180,19 +191,42 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   <!-- 資產 -->
   <section id="page-assets" class="page">
     <div class="card">
-      <div class="eyebrow">我的資產</div>
+      <div class="eyebrow" style="display:flex; justify-content:space-between; align-items:center">
+        <span>我的資產</span>
+        <button class="linkbtn" id="btnRefreshAssets">↻ 更新報價</button>
+      </div>
       <div id="assetList"></div>
     </div>
     <div class="card">
       <div class="eyebrow" id="formTitle">新增資產</div>
       <label for="aName">名稱</label>
-      <input id="aName" placeholder="例：ADA、美股、台股、現金">
+      <input id="aName" placeholder="例：ADA、美股、現金">
       <label for="aType">類別</label>
       <select id="aType">
         <option>加密貨幣</option><option>股票</option><option>現金</option><option>其他</option>
       </select>
-      <label for="aVal">目前價值（新台幣）</label>
-      <input id="aVal" type="number" inputmode="numeric" placeholder="例：2700000">
+      <label for="aMode">價格更新方式</label>
+      <select id="aMode">
+        <option value="manual">手動輸入現值</option>
+        <option value="crypto">自動：加密貨幣報價（免設定）</option>
+        <option value="usd">自動：美元金額 × 當日匯率（免設定）</option>
+        <option value="stock">自動：美股代號報價（需 Finnhub 金鑰）</option>
+      </select>
+      <div id="fVal">
+        <label for="aVal">目前價值（新台幣）</label>
+        <input id="aVal" type="number" inputmode="decimal" placeholder="例：2700000">
+      </div>
+      <div id="fSymbol" class="hidden">
+        <label for="aSymbol" id="lblSymbol">幣種 ID</label>
+        <input id="aSymbol" placeholder="cardano">
+      </div>
+      <div id="fQty" class="hidden">
+        <label for="aQty" id="lblQty">持有數量</label>
+        <input id="aQty" type="number" inputmode="decimal" placeholder="例：112200">
+      </div>
+      <label for="aCost">成本／本金（新台幣，可留空。填了會顯示損益）</label>
+      <input id="aCost" type="number" inputmode="decimal" placeholder="例：2710000">
+      <div class="hint" id="modeHint"></div>
       <div style="display:flex; gap:10px; margin-top:16px">
         <button id="btnSaveAsset">儲存</button>
         <button id="btnCancelEdit" class="btn-ghost hidden">取消</button>
@@ -205,8 +239,8 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <div class="card">
       <div class="eyebrow">資產變化</div>
       <svg id="spark" class="spark" viewBox="0 0 320 120" preserveAspectRatio="none" role="img" aria-label="資產變化折線圖"></svg>
-      <button id="btnSnap" style="margin-top:12px">記錄今天的總資產</button>
-      <div class="hint">建議每週固定記錄一次（例如週日錄音對比那天順手記）。同一天重複記錄會覆蓋。</div>
+      <button id="btnSnap" style="margin-top:12px">用最新報價更新今天的紀錄</button>
+      <div class="hint">每天第一次打開 App 會自動記錄一次，不用手動。想用更新後的報價覆蓋今天的數字，再按上面的按鈕即可。</div>
     </div>
     <div class="card">
       <div class="eyebrow">歷史紀錄</div>
@@ -224,7 +258,14 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       <input id="sDate" type="date">
       <label for="sMonthly">每月額外投入（元，沒有填 0）</label>
       <input id="sMonthly" type="number" inputmode="numeric">
-      <button id="btnSaveSettings" style="margin-top:16px">儲存設定</button>
+      <button id="btnSaveSettings" style="margin-top:18px">儲存目標</button>
+    </div>
+    <div class="card">
+      <div class="eyebrow">美股報價金鑰（選填）</div>
+      <label for="sFinnhub">Finnhub API 金鑰</label>
+      <input id="sFinnhub" placeholder="到 finnhub.io 免費註冊取得">
+      <div class="hint">只有「美股代號報價」模式才需要。加密貨幣報價與匯率換算免金鑰。</div>
+      <button id="btnSaveKey" class="btn-ghost" style="margin-top:14px">儲存金鑰</button>
     </div>
     <div class="card">
       <div class="eyebrow">帳號</div>
@@ -248,16 +289,14 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 <dialog id="confirmDlg">
   <p id="confirmMsg" style="margin-bottom:16px; line-height:1.6"></p>
   <div style="display:flex; gap:10px">
-    <button id="confirmYes" style="background:var(--up); color:#fff">刪除</button>
+    <button id="confirmYes" style="background:var(--danger); color:#fff">刪除</button>
     <button id="confirmNo" class="btn-ghost">取消</button>
   </div>
 </dialog>
 
 <script type="module">
 /* ============================================================
-   【第 1 步：貼上你自己的 Firebase 設定】
-   到 Firebase 主控台 → 專案設定 → 你的應用程式 → SDK 設定
-   把 firebaseConfig 整段換成你的。詳細步驟見 README。
+   Firebase 設定（已完成 ✓）
    ============================================================ */
 const firebaseConfig = {
   apiKey: "AIzaSyBJPiSvGWMsZulBR7iQpN5gzslC8-9d7YA",
@@ -283,20 +322,24 @@ const provider = new GoogleAuthProvider();
 
 const $ = id => document.getElementById(id);
 const fmt = n => "NT$ " + Math.round(n).toLocaleString("zh-TW");
-const fmtWan = n => (n/10000).toLocaleString("zh-TW",{maximumFractionDigits:1}) + " 萬";
+const fmtWan = n => {
+  if (Math.abs(n) >= 1e8) return (n/1e8).toLocaleString("zh-TW",{maximumFractionDigits:2}) + " 億";
+  return (n/10000).toLocaleString("zh-TW",{maximumFractionDigits:1}) + " 萬";
+};
 const todayStr = () => new Date().toISOString().slice(0,10);
 
 let uid = null;
-let data = null;   // { settings:{goal,targetDate,monthly}, assets:[], history:[] }
+let data = null;
 let editingId = null;
 
 const DEFAULTS = {
-  settings: { goal: 10000000, targetDate: "2030-05-17", monthly: 0 },
+  settings: { goal: 10000000, targetDate: "2030-05-17", monthly: 0, finnhubKey: "" },
   assets: [
-    { id: "seed1", name: "加密貨幣", type: "加密貨幣", value: 2700000 },
-    { id: "seed2", name: "股票",     type: "股票",     value: 1500000 }
+    { id: "seed1", name: "加密貨幣", type: "加密貨幣", mode: "manual", value: 2700000, cost: null },
+    { id: "seed2", name: "股票",     type: "股票",     mode: "manual", value: 1500000, cost: null }
   ],
-  history: []
+  history: [],
+  quotes: null
 };
 
 /* ---------- 登入 ---------- */
@@ -324,6 +367,8 @@ onAuthStateChanged(auth, async user => {
   await load();
   $("login").classList.add("hidden");
   $("app").classList.remove("hidden");
+  await refreshQuotes(false);   // 開啟 App 自動更新一次報價
+  autoSnapshot();               // 每天第一次打開自動記錄一次
 });
 
 $("btnLogout").onclick = () => signOut(auth);
@@ -333,13 +378,81 @@ async function load() {
   const snap = await getDoc(doc(db, "users", uid));
   data = snap.exists() ? snap.data() : structuredClone(DEFAULTS);
   data.settings ||= structuredClone(DEFAULTS.settings);
+  if (data.settings.finnhubKey === undefined) data.settings.finnhubKey = "";
   data.assets ||= []; data.history ||= [];
+  for (const a of data.assets) if (!a.mode) a.mode = "manual";   // 舊資料相容
   if (!snap.exists()) await save();
   renderAll();
 }
 async function save() {
   await setDoc(doc(db, "users", uid), data);
 }
+
+/* ---------- 自動報價 ---------- */
+async function refreshQuotes(showToast = true) {
+  const autos = data.assets.filter(a => a.mode && a.mode !== "manual");
+  if (!autos.length) { if (showToast) toast("沒有設定自動更新的資產"); renderAll(); return; }
+  const btns = [$("btnRefreshHome"), $("btnRefreshAssets")];
+  btns.forEach(b => { b.disabled = true; b.textContent = "更新中…"; });
+  const issues = [];
+  try {
+    // 1) 加密貨幣（CoinGecko，直接抓台幣價）
+    const cryptoIds = [...new Set(autos.filter(a => a.mode === "crypto").map(a => (a.symbol||"").trim().toLowerCase()).filter(Boolean))];
+    let cg = {};
+    if (cryptoIds.length) {
+      try {
+        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptoIds.join(",")}&vs_currencies=twd`);
+        cg = await r.json();
+      } catch { issues.push("加密貨幣報價"); }
+    }
+    // 2) 匯率（USD→TWD）
+    let fx = null;
+    if (autos.some(a => a.mode === "usd" || a.mode === "stock")) {
+      try {
+        const r = await fetch("https://open.er-api.com/v6/latest/USD");
+        const j = await r.json();
+        fx = j?.rates?.TWD || null;
+        if (!fx) issues.push("匯率");
+      } catch { issues.push("匯率"); }
+    }
+    // 3) 美股個股（Finnhub，需金鑰）
+    const key = (data.settings.finnhubKey || "").trim();
+    const tickers = [...new Set(autos.filter(a => a.mode === "stock").map(a => (a.symbol||"").trim().toUpperCase()).filter(Boolean))];
+    const stockPrices = {};
+    if (tickers.length && !key) issues.push("美股（未設定 Finnhub 金鑰）");
+    if (tickers.length && key) {
+      for (const t of tickers) {
+        try {
+          const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${t}&token=${key}`);
+          const j = await r.json();
+          if (j && j.c) stockPrices[t] = j.c; else issues.push(t);
+        } catch { issues.push(t); }
+      }
+    }
+    // 套用到各資產
+    for (const a of autos) {
+      if (a.mode === "crypto") {
+        const p = cg[(a.symbol||"").trim().toLowerCase()]?.twd;
+        if (p) a.value = p * (+a.qty || 0); else issues.push(a.name);
+      } else if (a.mode === "usd") {
+        if (fx) a.value = (+a.qty || 0) * fx;
+      } else if (a.mode === "stock") {
+        const p = stockPrices[(a.symbol||"").trim().toUpperCase()];
+        if (p && fx) a.value = p * (+a.qty || 0) * fx;
+      }
+    }
+    data.quotes = { updated: new Date().toISOString(), fx: fx || data.quotes?.fx || null };
+    await save();
+    renderAll();
+    if (showToast) toast(issues.length ? "部分更新失敗：" + [...new Set(issues)].join("、") : "報價已更新");
+  } catch (e) {
+    if (showToast) toast("報價更新失敗，稍後再試");
+  } finally {
+    btns.forEach(b => { b.disabled = false; b.textContent = "↻ 更新報價"; });
+  }
+}
+$("btnRefreshHome").onclick = () => refreshQuotes(true);
+$("btnRefreshAssets").onclick = () => refreshQuotes(true);
 
 /* ---------- 計算 ---------- */
 function total() { return data.assets.reduce((s,a)=>s+(+a.value||0), 0); }
@@ -349,13 +462,13 @@ function requiredRates() {
   const V0 = total();
   const C = +data.settings.monthly || 0;
   const days = Math.max(0, (new Date(data.settings.targetDate) - new Date()) / 86400000);
-  const n = days / (365.2425/12);           // 剩餘月數
+  const n = days / (365.2425/12);
   const gap = G - V0;
   if (gap <= 0) return { done:true, days, n };
   if (n <= 0)  return { over:true, days, n, gap };
 
   const fv = r => V0*Math.pow(1+r,n) + (r===0 ? C*n : C*(Math.pow(1+r,n)-1)/r);
-  if (fv(0) >= G) return { zero:true, days, n, gap };   // 光靠投入就夠
+  if (fv(0) >= G) return { zero:true, days, n, gap };
 
   let lo = 1e-9, hi = 1;
   for (let i=0; i<200; i++) {
@@ -371,13 +484,35 @@ function requiredRates() {
 /* ---------- 畫面 ---------- */
 function renderAll(){ renderHome(); renderAssets(); renderHistory(); renderSettings(); }
 
+function plHtml(diff){
+  if (diff > 0) return `<span class="up">＋${fmt(diff).slice(4)}</span>`;
+  if (diff < 0) return `<span class="down">－${fmt(-diff).slice(4)}</span>`;
+  return `<span>±0</span>`;
+}
+
 function renderHome() {
   const V0 = total(), G = +data.settings.goal || 1;
   $("totalNow").textContent = fmt(V0);
   $("totalSub").textContent = `約 ${fmtWan(V0)}｜目標 ${fmtWan(G)}（${(V0/G*100).toFixed(1)}%）`;
 
-  // 千格進度：10 格
+  // 已填成本的部位 → 顯示總損益
+  const withCost = data.assets.filter(a => +a.cost > 0);
+  if (withCost.length) {
+    const c = withCost.reduce((s,a)=>s+(+a.cost), 0);
+    const v = withCost.reduce((s,a)=>s+(+a.value||0), 0);
+    $("plSub").innerHTML = `已設成本部位：本金 ${fmt(c)}｜損益 ${plHtml(v-c)}`;
+  } else $("plSub").textContent = "";
+
+  // 報價更新時間
+  if (data.quotes?.updated) {
+    const d = new Date(data.quotes.updated);
+    const t = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    $("quoteInfo").textContent = `報價更新於 ${t}` + (data.quotes.fx ? `｜USD/TWD ${(+data.quotes.fx).toFixed(2)}` : "");
+  } else $("quoteInfo").textContent = "報價尚未更新";
+
   const per = G/10;
+  $("ladderPer").textContent = `每格 = ${fmtWan(per)}`;
+  $("ladderGoal").textContent = fmtWan(G);
   const ladder = $("ladder"); ladder.innerHTML = "";
   for (let i=0;i<10;i++){
     const cell = document.createElement("i");
@@ -414,54 +549,111 @@ function renderHome() {
   );
 }
 
+function modeMeta(a){
+  if (a.mode === "crypto") return `${a.symbol} × ${(+a.qty||0).toLocaleString("zh-TW")}｜自動`;
+  if (a.mode === "usd")    return `USD ${(+a.qty||0).toLocaleString("zh-TW")}｜依匯率自動換算`;
+  if (a.mode === "stock")  return `${(a.symbol||"").toUpperCase()} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
+  return "";
+}
+
 function renderAssets() {
   const list = $("assetList"); list.innerHTML = "";
   if (!data.assets.length) { list.innerHTML = '<div class="hint">還沒有資產，從下方新增。</div>'; return; }
   for (const a of data.assets) {
+    const meta = modeMeta(a);
+    const pl = (+a.cost > 0) ? `<div class="pl">${plHtml((+a.value||0) - (+a.cost))}</div>` : "";
     const row = document.createElement("div");
     row.className = "row";
     row.innerHTML = `
       <div>
         <span class="name">${esc(a.name)}</span><span class="tag">${esc(a.type)}</span>
+        ${meta ? `<div class="row-meta">${esc(meta)}</div>` : ""}
         <div class="row-actions">
           <a href="#" data-edit="${a.id}">編輯</a>
           <a href="#" class="del" data-del="${a.id}">刪除</a>
         </div>
       </div>
-      <div class="val num">${fmt(a.value)}</div>`;
+      <div><div class="val num">${fmt(a.value||0)}</div>${pl}</div>`;
     list.appendChild(row);
   }
   list.querySelectorAll("[data-edit]").forEach(el => el.onclick = e => { e.preventDefault(); startEdit(el.dataset.edit); });
   list.querySelectorAll("[data-del]").forEach(el => el.onclick = e => { e.preventDefault(); askDelete(el.dataset.del); });
 }
 
+/* ---------- 表單：模式切換 ---------- */
+const MODE_HINTS = {
+  manual: "自己輸入現值，價格不會自動變動。",
+  crypto: "幣種 ID 用 CoinGecko 的英文 ID：ADA 填 cardano、比特幣 bitcoin、以太幣 ethereum、SOL 填 solana。",
+  usd: "填美元總金額（例如美股帳戶總值），App 每天用當日匯率換算成台幣。股價變動時記得回來改美元金額。",
+  stock: "填美股代號（例：AAPL、TSLA）與股數，自動抓股價 × 匯率。需要先到「設定」貼上 Finnhub 免費金鑰。"
+};
+function applyMode(mode){
+  $("fVal").classList.toggle("hidden", mode !== "manual");
+  $("fSymbol").classList.toggle("hidden", !(mode === "crypto" || mode === "stock"));
+  $("fQty").classList.toggle("hidden", mode === "manual");
+  $("lblSymbol").textContent = mode === "stock" ? "美股代號" : "幣種 ID（CoinGecko）";
+  $("aSymbol").placeholder = mode === "stock" ? "AAPL" : "cardano";
+  $("lblQty").textContent = mode === "usd" ? "美元金額（USD）" : (mode === "stock" ? "股數" : "持有數量（顆）");
+  $("modeHint").textContent = MODE_HINTS[mode] || "";
+}
+$("aMode").onchange = () => applyMode($("aMode").value);
+applyMode("manual");
+
 function startEdit(id) {
   const a = data.assets.find(x=>x.id===id); if(!a) return;
   editingId = id;
   $("formTitle").textContent = "編輯資產";
-  $("aName").value = a.name; $("aType").value = a.type; $("aVal").value = a.value;
+  $("aName").value = a.name; $("aType").value = a.type;
+  $("aMode").value = a.mode || "manual"; applyMode(a.mode || "manual");
+  $("aVal").value = a.mode === "manual" ? (a.value ?? "") : "";
+  $("aSymbol").value = a.symbol || "";
+  $("aQty").value = a.qty ?? "";
+  $("aCost").value = a.cost ?? "";
   $("btnCancelEdit").classList.remove("hidden");
-  $("aName").focus();
+  window.scrollTo({top: document.body.scrollHeight});
 }
 $("btnCancelEdit").onclick = resetForm;
 function resetForm() {
   editingId = null;
   $("formTitle").textContent = "新增資產";
-  $("aName").value = ""; $("aVal").value = "";
+  $("aName").value = ""; $("aVal").value = ""; $("aSymbol").value = ""; $("aQty").value = ""; $("aCost").value = "";
+  $("aMode").value = "manual"; applyMode("manual");
   $("btnCancelEdit").classList.add("hidden");
 }
 
 $("btnSaveAsset").onclick = async () => {
   const name = $("aName").value.trim();
-  const value = +$("aVal").value;
-  if (!name || !(value >= 0)) { toast("請填名稱與金額"); return; }
+  const mode = $("aMode").value;
+  const cost = $("aCost").value === "" ? null : +$("aCost").value;
+  if (!name) { toast("請填名稱"); return; }
+
+  const obj = { name, type: $("aType").value, mode, cost };
+  if (mode === "manual") {
+    const value = +$("aVal").value;
+    if (!(value >= 0)) { toast("請填目前價值"); return; }
+    obj.value = value; obj.symbol = null; obj.qty = null;
+  } else {
+    const qty = +$("aQty").value;
+    if (!(qty > 0)) { toast(mode === "usd" ? "請填美元金額" : "請填數量"); return; }
+    obj.qty = qty;
+    if (mode === "crypto" || mode === "stock") {
+      const symbol = $("aSymbol").value.trim();
+      if (!symbol) { toast(mode === "stock" ? "請填美股代號" : "請填幣種 ID"); return; }
+      obj.symbol = symbol;
+    } else obj.symbol = null;
+  }
+
   if (editingId) {
     const a = data.assets.find(x=>x.id===editingId);
-    Object.assign(a, { name, type: $("aType").value, value });
+    if (mode !== "manual") obj.value = a.value || 0;   // 等報價更新
+    Object.assign(a, obj);
   } else {
-    data.assets.push({ id: "a"+Date.now(), name, type: $("aType").value, value });
+    obj.id = "a"+Date.now();
+    if (mode !== "manual") obj.value = 0;
+    data.assets.push(obj);
   }
   await save(); resetForm(); renderAll(); toast("已儲存");
+  if (mode !== "manual") refreshQuotes(true);
 };
 
 let pendingDel = null;
@@ -479,6 +671,16 @@ $("confirmYes").onclick = async () => {
 $("confirmNo").onclick = () => $("confirmDlg").close();
 
 /* ---------- 紀錄 ---------- */
+/* 每天第一次打開 App 自動記錄一次（同一天不重複） */
+async function autoSnapshot() {
+  const d = todayStr();
+  if (data.history.some(h => h.date === d)) return;
+  data.history.push({ date: d, total: total() });
+  data.history.sort((a,b)=>a.date.localeCompare(b.date));
+  await save(); renderHistory();
+  toast("已自動記錄今日資產");
+}
+
 $("btnSnap").onclick = async () => {
   const d = todayStr(), t = total();
   const i = data.history.findIndex(h=>h.date===d);
@@ -495,12 +697,10 @@ function renderHistory() {
   [...h].reverse().forEach((r,idx,arr) => {
     const prev = arr[idx+1];
     const diff = prev ? r.total - prev.total : 0;
-    const cls = diff>0 ? "up" : diff<0 ? "down" : "";
-    const sign = diff>0 ? "＋" : diff<0 ? "－" : "";
     const row = document.createElement("div");
     row.className = "row";
     row.innerHTML = `<div><span class="name num">${r.date}</span>
-        ${prev ? `<div class="row-actions"><span class="${cls}">${sign}${fmt(Math.abs(diff)).slice(4)}</span></div>` : ""}
+        ${prev ? `<div class="row-actions">${plHtml(diff)}</div>` : ""}
       </div><div class="val num">${fmt(r.total)}</div>`;
     list.appendChild(row);
   });
@@ -530,12 +730,17 @@ function renderSettings() {
   $("sGoal").value = data.settings.goal;
   $("sDate").value = data.settings.targetDate;
   $("sMonthly").value = data.settings.monthly;
+  $("sFinnhub").value = data.settings.finnhubKey || "";
 }
 $("btnSaveSettings").onclick = async () => {
   const goal = +$("sGoal").value, date = $("sDate").value, monthly = +$("sMonthly").value||0;
   if (!(goal>0) || !date) { toast("請填目標金額與日期"); return; }
-  data.settings = { goal, targetDate: date, monthly };
-  await save(); renderAll(); toast("設定已更新");
+  data.settings = { ...data.settings, goal, targetDate: date, monthly };
+  await save(); renderAll(); toast("目標已更新");
+};
+$("btnSaveKey").onclick = async () => {
+  data.settings.finnhubKey = $("sFinnhub").value.trim();
+  await save(); toast(data.settings.finnhubKey ? "金鑰已儲存" : "已清除金鑰");
 };
 
 /* ---------- 導覽 / 工具 ---------- */
@@ -548,7 +753,7 @@ document.querySelectorAll("nav a").forEach(a => a.onclick = e => {
   window.scrollTo({top:0});
 });
 
-function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),2200); }
 function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
