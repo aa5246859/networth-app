@@ -1,7 +1,7 @@
 {
-  "name": "千萬計畫｜資產紀錄",
-  "short_name": "千萬計畫",
-  "description": "記錄資產變化，追蹤 30 歲前達成 1,000 萬的進度。",
+  "name": "Wealth Tracker｜資產紀錄",
+  "short_name": "Wealth Tracker",
+  "description": "記錄資產變化，追蹤你的財務目標進度。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
