@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>千萬計畫</title>
+<meta name="description" content="記錄資產變化，追蹤 30 歲前達成 1,000 萬的進度。">
+<meta name="theme-color" content="#101614">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="千萬計畫">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#101614; --card:#18211C; --card2:#1E2923; --line:#2A362F;
+  --ink:#F0EDE4; --mut:#8C988F; --gold:#E3B34C; --gold-dim:#8A6E33;
+  --up:#E4574C; --down:#4CAF7D;
+  --radius:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Noto Sans TC",system-ui,sans-serif;
+  min-height:100dvh;
+  padding-bottom:calc(76px + env(safe-area-inset-bottom));
+}
+.num{font-family:"Space Grotesk","Noto Sans TC",monospace; font-variant-numeric:tabular-nums}
+header{
+  padding:calc(14px + env(safe-area-inset-top)) 20px 10px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+header h1{font-size:1.05rem; font-weight:700; letter-spacing:.14em}
+header h1 em{color:var(--gold); font-style:normal}
+#userChip{display:flex; align-items:center; gap:8px; font-size:.75rem; color:var(--mut)}
+#userChip img{width:26px;height:26px;border-radius:50%;border:1px solid var(--line)}
+main{padding:4px 16px 24px; max-width:520px; margin:0 auto}
+.page{display:none}
+.page.active{display:block; animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:14px}
+.eyebrow{font-size:.7rem; letter-spacing:.18em; color:var(--mut); margin-bottom:6px}
+.big{font-size:2.1rem; font-weight:700; line-height:1.1}
+.sub{font-size:.8rem; color:var(--mut); margin-top:4px}
+.gold{color:var(--gold)} .up{color:var(--up)} .down{color:var(--down)}
+
+/* 千格進度：10 格，每格 100 萬 */
+.ladder{display:grid; grid-template-columns:repeat(10,1fr); gap:5px; margin:14px 0 6px}
+.ladder i{height:26px; border-radius:6px; background:var(--card2); border:1px solid var(--line); position:relative; overflow:hidden}
+.ladder i b{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(180deg,var(--gold),var(--gold-dim))}
+.ladder-cap{display:flex; justify-content:space-between; font-size:.68rem; color:var(--mut)}
+
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.stat{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:12px}
+.stat .v{font-size:1.15rem; font-weight:700; margin-top:2px}
+.stat .k{font-size:.7rem; color:var(--mut); letter-spacing:.06em}
+
+.row{display:flex; align-items:center; justify-content:space-between; padding:13px 0; border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .name{font-weight:500}
+.row .tag{font-size:.68rem; color:var(--mut); border:1px solid var(--line); border-radius:99px; padding:2px 8px; margin-left:8px}
+.row .val{font-weight:700}
+.row-actions{display:flex; gap:14px; margin-top:4px; font-size:.72rem}
+.row-actions a{color:var(--mut); text-decoration:none}
+.row-actions a.del{color:var(--up)}
+
+button, .btn{
+  font-family:inherit; font-size:.95rem; font-weight:700;
+  background:var(--gold); color:#151208; border:none; border-radius:12px;
+  padding:14px 18px; width:100%; cursor:pointer;
+}
+button:active{transform:scale(.985)}
+.btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line)}
+.btn-sm{width:auto; padding:9px 14px; font-size:.8rem}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+
+label{display:block; font-size:.75rem; color:var(--mut); margin:14px 0 6px}
+input,select{
+  width:100%; background:var(--card2); border:1px solid var(--line); border-radius:10px;
+  color:var(--ink); font-family:inherit; font-size:1rem; padding:12px;
+}
+input[type=date]{color-scheme:dark}
+
+nav{
+  position:fixed; left:0; right:0; bottom:0;
+  background:rgba(16,22,20,.92); backdrop-filter:blur(12px);
+  border-top:1px solid var(--line);
+  display:flex; justify-content:space-around;
+  padding:8px 6px calc(8px + env(safe-area-inset-bottom));
+}
+nav a{
+  flex:1; text-align:center; text-decoration:none; color:var(--mut);
+  font-size:.68rem; padding:6px 0; border-radius:10px;
+}
+nav a svg{display:block; margin:0 auto 3px; width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+nav a.on{color:var(--gold)}
+
+#login{
+  min-height:100dvh; display:flex; flex-direction:column; justify-content:center; align-items:center;
+  padding:32px; text-align:center; gap:10px;
+}
+#login .mark{font-size:3rem; margin-bottom:6px}
+#login h2{font-size:1.5rem; letter-spacing:.1em}
+#login p{color:var(--mut); font-size:.85rem; max-width:280px; line-height:1.7; margin-bottom:14px}
+#login button{max-width:300px}
+
+#toast{
+  position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
+  background:var(--ink); color:#151208; font-size:.82rem; font-weight:700;
+  padding:10px 18px; border-radius:99px; opacity:0; pointer-events:none; transition:opacity .25s;
+  z-index:50; white-space:nowrap;
+}
+#toast.show{opacity:1}
+.spark{width:100%; height:120px; margin-top:8px}
+.hint{font-size:.72rem; color:var(--mut); line-height:1.7; margin-top:10px}
+dialog{
+  border:1px solid var(--line); border-radius:var(--radius); background:var(--card); color:var(--ink);
+  width:min(92vw,420px); padding:20px; margin:auto;
+}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- 登入畫面 -->
+<div id="login" class="hidden">
+  <div class="mark">🪜</div>
+  <h2>千萬<em class="gold">計畫</em></h2>
+  <p>記錄資產變化，一格一格爬向 1,000 萬。使用 Google 登入，任何裝置都能同步你的資料。</p>
+  <button id="btnGoogle">使用 Google 登入</button>
+  <div id="loginErr" class="hint"></div>
+</div>
+
+<!-- App 主體 -->
+<div id="app" class="hidden">
+<header>
+  <h1>千萬<em>計畫</em></h1>
+  <div id="userChip"></div>
+</header>
+<main>
+
+  <!-- 總覽 -->
+  <section id="page-home" class="page active">
+    <div class="card">
+      <div class="eyebrow">目前總資產</div>
+      <div class="big num" id="totalNow">—</div>
+      <div class="sub" id="totalSub"></div>
+      <div class="ladder" id="ladder" aria-label="進度：每格代表 100 萬"></div>
+      <div class="ladder-cap"><span>0</span><span>每格 = 100 萬</span><span class="gold">1,000 萬</span></div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">距離目標</div>
+      <div class="grid2">
+        <div class="stat"><div class="k">還差</div><div class="v num gold" id="gapAmt">—</div></div>
+        <div class="stat"><div class="k">剩餘時間</div><div class="v num" id="timeLeft">—</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">達標所需報酬（含每月投入 <span id="monthlyShow" class="num">0</span> 元）</div>
+      <div class="grid2">
+        <div class="stat"><div class="k">需要年報酬</div><div class="v num" id="reqYear">—</div></div>
+        <div class="stat"><div class="k">需要月報酬</div><div class="v num" id="reqMonth">—</div></div>
+        <div class="stat"><div class="k">需要日報酬</div><div class="v num" id="reqDay">—</div></div>
+        <div class="stat"><div class="k">平均每天要增加</div><div class="v num" id="reqDayAmt">—</div></div>
+      </div>
+      <div class="hint" id="reqNote"></div>
+    </div>
+  </section>
+
+  <!-- 資產 -->
+  <section id="page-assets" class="page">
+    <div class="card">
+      <div class="eyebrow">我的資產</div>
+      <div id="assetList"></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow" id="formTitle">新增資產</div>
+      <label for="aName">名稱</label>
+      <input id="aName" placeholder="例：ADA、美股、台股、現金">
+      <label for="aType">類別</label>
+      <select id="aType">
+        <option>加密貨幣</option><option>股票</option><option>現金</option><option>其他</option>
+      </select>
+      <label for="aVal">目前價值（新台幣）</label>
+      <input id="aVal" type="number" inputmode="numeric" placeholder="例：2700000">
+      <div style="display:flex; gap:10px; margin-top:16px">
+        <button id="btnSaveAsset">儲存</button>
+        <button id="btnCancelEdit" class="btn-ghost hidden">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 紀錄 -->
+  <section id="page-history" class="page">
+    <div class="card">
+      <div class="eyebrow">資產變化</div>
+      <svg id="spark" class="spark" viewBox="0 0 320 120" preserveAspectRatio="none" role="img" aria-label="資產變化折線圖"></svg>
+      <button id="btnSnap" style="margin-top:12px">記錄今天的總資產</button>
+      <div class="hint">建議每週固定記錄一次（例如週日錄音對比那天順手記）。同一天重複記錄會覆蓋。</div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">歷史紀錄</div>
+      <div id="histList"><div class="hint">還沒有紀錄。</div></div>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="page-settings" class="page">
+    <div class="card">
+      <div class="eyebrow">目標設定</div>
+      <label for="sGoal">目標金額（元）</label>
+      <input id="sGoal" type="number" inputmode="numeric">
+      <label for="sDate">目標日期</label>
+      <input id="sDate" type="date">
+      <label for="sMonthly">每月額外投入（元，沒有填 0）</label>
+      <input id="sMonthly" type="number" inputmode="numeric">
+      <button id="btnSaveSettings" style="margin-top:16px">儲存設定</button>
+    </div>
+    <div class="card">
+      <div class="eyebrow">帳號</div>
+      <div class="sub" id="acctInfo" style="margin-bottom:12px"></div>
+      <button id="btnLogout" class="btn-ghost">登出</button>
+    </div>
+  </section>
+
+</main>
+
+<nav>
+  <a href="#home" class="on" data-page="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>總覽</a>
+  <a href="#assets" data-page="assets"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>資產</a>
+  <a href="#history" data-page="history"><svg viewBox="0 0 24 24"><path d="M4 19l5-6 4 3 7-9"/></svg>紀錄</a>
+  <a href="#settings" data-page="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2z"/></svg>設定</a>
+</nav>
+</div>
+
+<div id="toast" role="status"></div>
+
+<dialog id="confirmDlg">
+  <p id="confirmMsg" style="margin-bottom:16px; line-height:1.6"></p>
+  <div style="display:flex; gap:10px">
+    <button id="confirmYes" style="background:var(--up); color:#fff">刪除</button>
+    <button id="confirmNo" class="btn-ghost">取消</button>
+  </div>
+</dialog>
+
+<script type="module">
+/* ============================================================
+   【第 1 步：貼上你自己的 Firebase 設定】
+   到 Firebase 主控台 → 專案設定 → 你的應用程式 → SDK 設定
+   把 firebaseConfig 整段換成你的。詳細步驟見 README。
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "貼上你的-apiKey",
+  authDomain: "你的專案id.firebaseapp.com",
+  projectId: "你的專案id",
+  storageBucket: "你的專案id.appspot.com",
+  messagingSenderId: "貼上你的",
+  appId: "貼上你的"
+};
+/* ============================================================ */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+         getRedirectResult, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+const $ = id => document.getElementById(id);
+const fmt = n => "NT$ " + Math.round(n).toLocaleString("zh-TW");
+const fmtWan = n => (n/10000).toLocaleString("zh-TW",{maximumFractionDigits:1}) + " 萬";
+const todayStr = () => new Date().toISOString().slice(0,10);
+
+let uid = null;
+let data = null;   // { settings:{goal,targetDate,monthly}, assets:[], history:[] }
+let editingId = null;
+
+const DEFAULTS = {
+  settings: { goal: 10000000, targetDate: "2030-05-17", monthly: 0 },
+  assets: [
+    { id: "seed1", name: "加密貨幣", type: "加密貨幣", value: 2700000 },
+    { id: "seed2", name: "股票",     type: "股票",     value: 1500000 }
+  ],
+  history: []
+};
+
+/* ---------- 登入 ---------- */
+$("btnGoogle").onclick = async () => {
+  try { await signInWithPopup(auth, provider); }
+  catch (e) {
+    try { await signInWithRedirect(auth, provider); }
+    catch (e2) { $("loginErr").textContent = "登入失敗：" + e2.message; }
+  }
+};
+getRedirectResult(auth).catch(()=>{});
+
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    uid = null; data = null;
+    $("app").classList.add("hidden");
+    $("login").classList.remove("hidden");
+    return;
+  }
+  uid = user.uid;
+  $("userChip").innerHTML =
+    (user.photoURL ? `<img src="${user.photoURL}" alt="">` : "") +
+    `<span>${user.displayName || ""}</span>`;
+  $("acctInfo").textContent = `${user.displayName || ""}（${user.email || ""}）`;
+  await load();
+  $("login").classList.add("hidden");
+  $("app").classList.remove("hidden");
+});
+
+$("btnLogout").onclick = () => signOut(auth);
+
+/* ---------- 資料 ---------- */
+async function load() {
+  const snap = await getDoc(doc(db, "users", uid));
+  data = snap.exists() ? snap.data() : structuredClone(DEFAULTS);
+  data.settings ||= structuredClone(DEFAULTS.settings);
+  data.assets ||= []; data.history ||= [];
+  if (!snap.exists()) await save();
+  renderAll();
+}
+async function save() {
+  await setDoc(doc(db, "users", uid), data);
+}
+
+/* ---------- 計算 ---------- */
+function total() { return data.assets.reduce((s,a)=>s+(+a.value||0), 0); }
+
+function requiredRates() {
+  const G = +data.settings.goal || 0;
+  const V0 = total();
+  const C = +data.settings.monthly || 0;
+  const days = Math.max(0, (new Date(data.settings.targetDate) - new Date()) / 86400000);
+  const n = days / (365.2425/12);           // 剩餘月數
+  const gap = G - V0;
+  if (gap <= 0) return { done:true, days, n };
+  if (n <= 0)  return { over:true, days, n, gap };
+
+  const fv = r => V0*Math.pow(1+r,n) + (r===0 ? C*n : C*(Math.pow(1+r,n)-1)/r);
+  if (fv(0) >= G) return { zero:true, days, n, gap };   // 光靠投入就夠
+
+  let lo = 1e-9, hi = 1;
+  for (let i=0; i<200; i++) {
+    const mid = (lo+hi)/2;
+    (fv(mid) < G) ? lo = mid : hi = mid;
+  }
+  const rm = (lo+hi)/2;
+  const ry = Math.pow(1+rm,12) - 1;
+  const rd = Math.pow(1+ry, 1/365.25) - 1;
+  return { rm, ry, rd, days, n, gap };
+}
+
+/* ---------- 畫面 ---------- */
+function renderAll(){ renderHome(); renderAssets(); renderHistory(); renderSettings(); }
+
+function renderHome() {
+  const V0 = total(), G = +data.settings.goal || 1;
+  $("totalNow").textContent = fmt(V0);
+  $("totalSub").textContent = `約 ${fmtWan(V0)}｜目標 ${fmtWan(G)}（${(V0/G*100).toFixed(1)}%）`;
+
+  // 千格進度：10 格
+  const per = G/10;
+  const ladder = $("ladder"); ladder.innerHTML = "";
+  for (let i=0;i<10;i++){
+    const cell = document.createElement("i");
+    const filled = Math.max(0, Math.min(1, (V0 - i*per)/per));
+    if (filled > 0){
+      const b = document.createElement("b");
+      b.style.width = (filled*100)+"%";
+      cell.appendChild(b);
+    }
+    ladder.appendChild(cell);
+  }
+
+  const r = requiredRates();
+  $("gapAmt").textContent = r.done ? "已達標 🎉" : fmt(Math.max(0, G-V0));
+  const months = Math.floor(r.n), yy = Math.floor(months/12), mm = months%12;
+  $("timeLeft").textContent = r.days<=0 ? "已到期" : `${yy} 年 ${mm} 個月`;
+  $("monthlyShow").textContent = (+data.settings.monthly||0).toLocaleString("zh-TW");
+
+  const set = (y,m,d,amt,note) => {
+    $("reqYear").textContent=y; $("reqMonth").textContent=m;
+    $("reqDay").textContent=d; $("reqDayAmt").textContent=amt;
+    $("reqNote").textContent=note;
+  };
+  if (r.done) set("—","—","—","—","總資產已超過目標。可以到「設定」調高目標。");
+  else if (r.over) set("—","—","—","—","目標日期已過，請到「設定」更新目標日期。");
+  else if (r.zero) set("0%","0%","0%", fmt(r.gap/r.days),
+    "光靠每月投入就能達標，不需要投資報酬。");
+  else set(
+    (r.ry*100).toFixed(1)+"%",
+    (r.rm*100).toFixed(2)+"%",
+    (r.rd*100).toFixed(3)+"%",
+    fmt(r.gap/r.days),
+    "報酬率為複利計算（本金＋每月投入一起滾）。「平均每天要增加」是把差距直接除以剩餘天數的簡單參考值。"
+  );
+}
+
+function renderAssets() {
+  const list = $("assetList"); list.innerHTML = "";
+  if (!data.assets.length) { list.innerHTML = '<div class="hint">還沒有資產，從下方新增。</div>'; return; }
+  for (const a of data.assets) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `
+      <div>
+        <span class="name">${esc(a.name)}</span><span class="tag">${esc(a.type)}</span>
+        <div class="row-actions">
+          <a href="#" data-edit="${a.id}">編輯</a>
+          <a href="#" class="del" data-del="${a.id}">刪除</a>
+        </div>
+      </div>
+      <div class="val num">${fmt(a.value)}</div>`;
+    list.appendChild(row);
+  }
+  list.querySelectorAll("[data-edit]").forEach(el => el.onclick = e => { e.preventDefault(); startEdit(el.dataset.edit); });
+  list.querySelectorAll("[data-del]").forEach(el => el.onclick = e => { e.preventDefault(); askDelete(el.dataset.del); });
+}
+
+function startEdit(id) {
+  const a = data.assets.find(x=>x.id===id); if(!a) return;
+  editingId = id;
+  $("formTitle").textContent = "編輯資產";
+  $("aName").value = a.name; $("aType").value = a.type; $("aVal").value = a.value;
+  $("btnCancelEdit").classList.remove("hidden");
+  $("aName").focus();
+}
+$("btnCancelEdit").onclick = resetForm;
+function resetForm() {
+  editingId = null;
+  $("formTitle").textContent = "新增資產";
+  $("aName").value = ""; $("aVal").value = "";
+  $("btnCancelEdit").classList.add("hidden");
+}
+
+$("btnSaveAsset").onclick = async () => {
+  const name = $("aName").value.trim();
+  const value = +$("aVal").value;
+  if (!name || !(value >= 0)) { toast("請填名稱與金額"); return; }
+  if (editingId) {
+    const a = data.assets.find(x=>x.id===editingId);
+    Object.assign(a, { name, type: $("aType").value, value });
+  } else {
+    data.assets.push({ id: "a"+Date.now(), name, type: $("aType").value, value });
+  }
+  await save(); resetForm(); renderAll(); toast("已儲存");
+};
+
+let pendingDel = null;
+function askDelete(id) {
+  pendingDel = id;
+  const a = data.assets.find(x=>x.id===id);
+  $("confirmMsg").textContent = `確定刪除「${a?.name}」？`;
+  $("confirmDlg").showModal();
+}
+$("confirmYes").onclick = async () => {
+  data.assets = data.assets.filter(x=>x.id!==pendingDel);
+  $("confirmDlg").close();
+  await save(); renderAll(); toast("已刪除");
+};
+$("confirmNo").onclick = () => $("confirmDlg").close();
+
+/* ---------- 紀錄 ---------- */
+$("btnSnap").onclick = async () => {
+  const d = todayStr(), t = total();
+  const i = data.history.findIndex(h=>h.date===d);
+  if (i>=0) data.history[i].total = t; else data.history.push({date:d, total:t});
+  data.history.sort((a,b)=>a.date.localeCompare(b.date));
+  await save(); renderAll(); toast("已記錄 " + fmt(t));
+};
+
+function renderHistory() {
+  const h = data.history;
+  const list = $("histList");
+  if (!h.length) { list.innerHTML = '<div class="hint">還沒有紀錄。</div>'; drawSpark([]); return; }
+  list.innerHTML = "";
+  [...h].reverse().forEach((r,idx,arr) => {
+    const prev = arr[idx+1];
+    const diff = prev ? r.total - prev.total : 0;
+    const cls = diff>0 ? "up" : diff<0 ? "down" : "";
+    const sign = diff>0 ? "＋" : diff<0 ? "－" : "";
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<div><span class="name num">${r.date}</span>
+        ${prev ? `<div class="row-actions"><span class="${cls}">${sign}${fmt(Math.abs(diff)).slice(4)}</span></div>` : ""}
+      </div><div class="val num">${fmt(r.total)}</div>`;
+    list.appendChild(row);
+  });
+  drawSpark(h);
+}
+
+function drawSpark(h) {
+  const svg = $("spark");
+  if (h.length < 2) { svg.innerHTML = `<text x="160" y="64" fill="#8C988F" font-size="11" text-anchor="middle">至少兩筆紀錄才會畫出折線</text>`; return; }
+  const vals = h.map(r=>r.total);
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max-min)||1;
+  const pts = vals.map((v,i)=>{
+    const x = 8 + i*(304/(vals.length-1));
+    const y = 108 - ((v-min)/span)*96;
+    return [x,y];
+  });
+  const path = pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  const last = pts[pts.length-1];
+  svg.innerHTML = `
+    <path d="${path} L ${last[0].toFixed(1)} 112 L 8 112 Z" fill="rgba(227,179,76,.12)"/>
+    <path d="${path}" stroke="#E3B34C" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.5" fill="#E3B34C"/>`;
+}
+
+/* ---------- 設定 ---------- */
+function renderSettings() {
+  $("sGoal").value = data.settings.goal;
+  $("sDate").value = data.settings.targetDate;
+  $("sMonthly").value = data.settings.monthly;
+}
+$("btnSaveSettings").onclick = async () => {
+  const goal = +$("sGoal").value, date = $("sDate").value, monthly = +$("sMonthly").value||0;
+  if (!(goal>0) || !date) { toast("請填目標金額與日期"); return; }
+  data.settings = { goal, targetDate: date, monthly };
+  await save(); renderAll(); toast("設定已更新");
+};
+
+/* ---------- 導覽 / 工具 ---------- */
+document.querySelectorAll("nav a").forEach(a => a.onclick = e => {
+  e.preventDefault();
+  document.querySelectorAll("nav a").forEach(x=>x.classList.remove("on"));
+  a.classList.add("on");
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  $("page-"+a.dataset.page).classList.add("active");
+  window.scrollTo({top:0});
+});
+
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "千萬計畫｜資產紀錄",
+  "short_name": "千萬計畫",
+  "description": "記錄資產變化，追蹤 30 歲前達成 1,000 萬的進度。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101614",
+  "theme_color": "#101614",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
