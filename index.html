@@ -237,7 +237,15 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <label for="aQty" id="lblQty">持有數量</label>
         <input id="aQty" type="number" inputmode="decimal" placeholder="輸入數量">
       </div>
-      <label for="aCost">成本／本金（新台幣，可留空。填了會顯示損益）</label>
+      <div id="fCostPer" class="hidden">
+        <label for="aCostPer" id="lblCostPer">每股成本（元／股，選填）</label>
+        <input id="aCostPer" type="number" inputmode="decimal" placeholder="輸入單位買入價">
+      </div>
+      <div id="fCostFx" class="hidden">
+        <label for="aCostFx">成本匯率（選填，留空用最新匯率）</label>
+        <input id="aCostFx" type="number" inputmode="decimal" placeholder="例如 32.5">
+      </div>
+      <label for="aCost">成本／本金（新台幣總額，可留空。填了會顯示損益）</label>
       <input id="aCost" type="number" inputmode="decimal" placeholder="輸入成本金額">
       <div class="hint" id="modeHint"></div>
       <div style="display:flex; gap:10px; margin-top:16px">
@@ -468,7 +476,7 @@ async function refreshQuotes(showToast = true) {
     }
     // 2) 匯率（USD→TWD）
     let fx = null;
-    if (autos.some(a => a.mode === "usd" || a.mode === "stock")) {
+    if (autos.some(a => a.mode === "usd" || a.mode === "stock" || (a.mode === "crypto" && +a.costPer > 0 && !(+a.costFx > 0)))) {
       try {
         const r = await fetch("https://open.er-api.com/v6/latest/USD");
         const j = await r.json();
@@ -525,6 +533,10 @@ async function refreshQuotes(showToast = true) {
       } else if (a.mode === "stock") {
         const p = stockPrices[(a.symbol||"").trim().toUpperCase()];
         if (p && fx) a.value = p * (+a.qty || 0) * fx;
+      }
+      // 美元單位成本、未鎖定成本匯率 → 用最新匯率換算總成本
+      if ((a.mode === "crypto" || a.mode === "stock") && +a.costPer > 0 && !(+a.costFx > 0) && fx) {
+        a.cost = a.costPer * (+a.qty || 0) * fx;
       }
     }
     data.quotes = { updated: new Date().toISOString(), fx: fx || data.quotes?.fx || null };
@@ -670,15 +682,21 @@ function renderAssets() {
 /* ---------- 表單：模式切換 ---------- */
 const MODE_HINTS = {
   manual: "自己輸入現值，價格不會自動變動。",
-  crypto: "幣種 ID 用 CoinGecko 的英文 ID：例如 cardano、bitcoin、ethereum、solana。",
-  tw: "填台股代號（例：2330、0050）與股數。上市、上櫃都支援，每天收盤後自動更新，免金鑰。",
+  crypto: "幣種 ID 用 CoinGecko 的英文 ID：例如 cardano、bitcoin、ethereum、solana。成本可直接填「每單位成本（美元）」，會自動 × 數量 × 匯率換成台幣。",
+  tw: "填台股代號（例：2330、0050）與股數。上市、上櫃都支援，每天收盤後自動更新，免金鑰。成本填「每股成本」或「總成本」擇一。",
   usd: "填美元總金額（例如美股帳戶總值），App 每天用當日匯率換算成台幣。股價變動時記得回來改美元金額。",
-  stock: "填美股代號（例：AAPL、TSLA）與股數，自動抓股價 × 匯率。需要先到「設定」貼上 Finnhub 免費金鑰。"
+  stock: "填美股代號（例：AAPL、TSLA）與股數，自動抓股價 × 匯率。需要先到「設定」貼上 Finnhub 免費金鑰。成本可直接填「每股成本（美元）」。"
 };
 function applyMode(mode){
   $("fVal").classList.toggle("hidden", mode !== "manual");
   $("fSymbol").classList.toggle("hidden", !(mode === "crypto" || mode === "stock" || mode === "tw"));
   $("fQty").classList.toggle("hidden", mode === "manual");
+  $("fCostPer").classList.toggle("hidden", !(mode === "tw" || mode === "crypto" || mode === "stock"));
+  $("fCostFx").classList.toggle("hidden", !(mode === "crypto" || mode === "stock"));
+  $("lblCostPer").textContent =
+    mode === "tw" ? "每股成本（台幣／股，選填）" :
+    mode === "stock" ? "每股成本（美元／股，選填）" :
+    "每單位成本（美元／顆，選填）";
   $("lblSymbol").textContent = mode === "stock" ? "美股代號" : (mode === "tw" ? "台股代號" : "幣種 ID（CoinGecko）");
   $("aSymbol").placeholder = mode === "stock" ? "AAPL" : (mode === "tw" ? "2330" : "cardano");
   $("lblQty").textContent = mode === "usd" ? "美元金額（USD）" : ((mode === "stock" || mode === "tw") ? "股數" : "持有數量（顆）");
@@ -697,6 +715,8 @@ function startEdit(id) {
   $("aVal").value = a.mode === "manual" ? (a.value ?? "") : "";
   $("aSymbol").value = a.symbol || "";
   $("aQty").value = a.qty ?? "";
+  $("aCostPer").value = a.costPer ?? "";
+  $("aCostFx").value = a.costFx ?? "";
   $("aCost").value = a.cost ?? "";
   $("btnCancelEdit").classList.remove("hidden");
   window.scrollTo({top: document.body.scrollHeight});
@@ -705,7 +725,7 @@ $("btnCancelEdit").onclick = resetForm;
 function resetForm() {
   editingId = null;
   $("formTitle").textContent = "新增資產";
-  $("aName").value = ""; $("aVal").value = ""; $("aSymbol").value = ""; $("aQty").value = ""; $("aCost").value = "";
+  $("aName").value = ""; $("aVal").value = ""; $("aSymbol").value = ""; $("aQty").value = ""; $("aCost").value = ""; $("aCostPer").value = ""; $("aCostFx").value = "";
   $("aMode").value = "manual"; applyMode("manual");
   $("btnCancelEdit").classList.add("hidden");
 }
@@ -717,6 +737,7 @@ $("btnSaveAsset").onclick = async () => {
   if (!name) { toast("請填名稱"); return; }
 
   const obj = { name, type: $("aType").value, mode, cost };
+  obj.costPer = null; obj.costFx = null;
   if (mode === "manual") {
     const value = +$("aVal").value;
     if (!(value >= 0)) { toast("請填目前價值"); return; }
@@ -725,6 +746,15 @@ $("btnSaveAsset").onclick = async () => {
     const qty = +$("aQty").value;
     if (!(qty > 0)) { toast(mode === "usd" ? "請填美元金額" : "請填數量"); return; }
     obj.qty = qty;
+    const costPer = $("aCostPer").value === "" ? null : +$("aCostPer").value;
+    const costFx  = $("aCostFx").value === "" ? null : +$("aCostFx").value;
+    if (mode === "tw" && costPer > 0) {
+      obj.costPer = costPer; obj.cost = costPer * qty;              // 台幣：每股成本 × 股數
+    } else if ((mode === "crypto" || mode === "stock") && costPer > 0) {
+      obj.costPer = costPer; obj.costFx = costFx > 0 ? costFx : null;
+      if (costFx > 0) obj.cost = costPer * qty * costFx;            // 美元：單位成本 × 數量 × 成本匯率
+      else obj.cost = null;                                          // 沒填匯率 → 更新報價時用最新匯率算
+    }
     if (mode === "crypto" || mode === "stock" || mode === "tw") {
       const symbol = $("aSymbol").value.trim();
       if (!symbol) { toast(mode === "crypto" ? "請填幣種 ID" : "請填股票代號"); return; }
