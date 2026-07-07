@@ -212,21 +212,22 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <div class="card">
       <div class="eyebrow" id="formTitle">新增資產</div>
       <label for="aName">名稱</label>
-      <input id="aName" placeholder="例：ADA、美股、現金">
+      <input id="aName" placeholder="輸入資產名稱">
       <label for="aType">類別</label>
       <select id="aType">
-        <option>加密貨幣</option><option>股票</option><option>現金</option><option>其他</option>
+        <option>加密貨幣</option><option>台股</option><option>美股</option><option>現金</option><option>其他</option>
       </select>
       <label for="aMode">價格更新方式</label>
       <select id="aMode">
         <option value="manual">手動輸入現值</option>
         <option value="crypto">自動：加密貨幣報價（免設定）</option>
+        <option value="tw">自動：台股代號報價（免設定）</option>
         <option value="usd">自動：美元金額 × 當日匯率（免設定）</option>
         <option value="stock">自動：美股代號報價（需 Finnhub 金鑰）</option>
       </select>
       <div id="fVal">
         <label for="aVal">目前價值（新台幣）</label>
-        <input id="aVal" type="number" inputmode="decimal" placeholder="例：2700000">
+        <input id="aVal" type="number" inputmode="decimal" placeholder="輸入金額">
       </div>
       <div id="fSymbol" class="hidden">
         <label for="aSymbol" id="lblSymbol">幣種 ID</label>
@@ -234,10 +235,10 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       </div>
       <div id="fQty" class="hidden">
         <label for="aQty" id="lblQty">持有數量</label>
-        <input id="aQty" type="number" inputmode="decimal" placeholder="例：112200">
+        <input id="aQty" type="number" inputmode="decimal" placeholder="輸入數量">
       </div>
       <label for="aCost">成本／本金（新台幣，可留空。填了會顯示損益）</label>
-      <input id="aCost" type="number" inputmode="decimal" placeholder="例：2710000">
+      <input id="aCost" type="number" inputmode="decimal" placeholder="輸入成本金額">
       <div class="hint" id="modeHint"></div>
       <div style="display:flex; gap:10px; margin-top:16px">
         <button id="btnSaveAsset">儲存</button>
@@ -475,7 +476,29 @@ async function refreshQuotes(showToast = true) {
         if (!fx) issues.push("匯率");
       } catch { issues.push("匯率"); }
     }
-    // 3) 美股個股（Finnhub，需金鑰）
+    // 3) 台股（證交所／櫃買 OpenAPI，收盤價，免金鑰）
+    const twCodes = [...new Set(autos.filter(a => a.mode === "tw").map(a => (a.symbol||"").trim()).filter(Boolean))];
+    const twPrices = {};
+    if (twCodes.length) {
+      try {
+        const r = await fetch("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL");
+        const arr = await r.json();
+        for (const row of arr) if (twCodes.includes(row.Code)) twPrices[row.Code] = +row.ClosingPrice;
+      } catch {}
+      const missing = twCodes.filter(c => !(twPrices[c] > 0));
+      if (missing.length) {
+        try {
+          const r = await fetch("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes");
+          const arr = await r.json();
+          for (const row of arr) {
+            const code = row.SecuritiesCompanyCode || row.Code;
+            if (missing.includes(code)) twPrices[code] = +(row.Close || row.ClosingPrice);
+          }
+        } catch {}
+      }
+      twCodes.filter(c => !(twPrices[c] > 0)).forEach(c => issues.push("台股 " + c));
+    }
+    // 4) 美股個股（Finnhub，需金鑰）
     const key = (data.settings.finnhubKey || "").trim();
     const tickers = [...new Set(autos.filter(a => a.mode === "stock").map(a => (a.symbol||"").trim().toUpperCase()).filter(Boolean))];
     const stockPrices = {};
@@ -494,6 +517,9 @@ async function refreshQuotes(showToast = true) {
       if (a.mode === "crypto") {
         const p = cg[(a.symbol||"").trim().toLowerCase()]?.twd;
         if (p) a.value = p * (+a.qty || 0); else issues.push(a.name);
+      } else if (a.mode === "tw") {
+        const p = twPrices[(a.symbol||"").trim()];
+        if (p > 0) a.value = p * (+a.qty || 0);
       } else if (a.mode === "usd") {
         if (fx) a.value = (+a.qty || 0) * fx;
       } else if (a.mode === "stock") {
@@ -611,6 +637,7 @@ function renderHome() {
 
 function modeMeta(a){
   if (a.mode === "crypto") return `${a.symbol} × ${(+a.qty||0).toLocaleString("zh-TW")}｜自動`;
+  if (a.mode === "tw")     return `台股 ${a.symbol} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
   if (a.mode === "usd")    return `USD ${(+a.qty||0).toLocaleString("zh-TW")}｜依匯率自動換算`;
   if (a.mode === "stock")  return `${(a.symbol||"").toUpperCase()} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
   return "";
@@ -643,17 +670,18 @@ function renderAssets() {
 /* ---------- 表單：模式切換 ---------- */
 const MODE_HINTS = {
   manual: "自己輸入現值，價格不會自動變動。",
-  crypto: "幣種 ID 用 CoinGecko 的英文 ID：ADA 填 cardano、比特幣 bitcoin、以太幣 ethereum、SOL 填 solana。",
+  crypto: "幣種 ID 用 CoinGecko 的英文 ID：例如 cardano、bitcoin、ethereum、solana。",
+  tw: "填台股代號（例：2330、0050）與股數。上市、上櫃都支援，每天收盤後自動更新，免金鑰。",
   usd: "填美元總金額（例如美股帳戶總值），App 每天用當日匯率換算成台幣。股價變動時記得回來改美元金額。",
   stock: "填美股代號（例：AAPL、TSLA）與股數，自動抓股價 × 匯率。需要先到「設定」貼上 Finnhub 免費金鑰。"
 };
 function applyMode(mode){
   $("fVal").classList.toggle("hidden", mode !== "manual");
-  $("fSymbol").classList.toggle("hidden", !(mode === "crypto" || mode === "stock"));
+  $("fSymbol").classList.toggle("hidden", !(mode === "crypto" || mode === "stock" || mode === "tw"));
   $("fQty").classList.toggle("hidden", mode === "manual");
-  $("lblSymbol").textContent = mode === "stock" ? "美股代號" : "幣種 ID（CoinGecko）";
-  $("aSymbol").placeholder = mode === "stock" ? "AAPL" : "cardano";
-  $("lblQty").textContent = mode === "usd" ? "美元金額（USD）" : (mode === "stock" ? "股數" : "持有數量（顆）");
+  $("lblSymbol").textContent = mode === "stock" ? "美股代號" : (mode === "tw" ? "台股代號" : "幣種 ID（CoinGecko）");
+  $("aSymbol").placeholder = mode === "stock" ? "AAPL" : (mode === "tw" ? "2330" : "cardano");
+  $("lblQty").textContent = mode === "usd" ? "美元金額（USD）" : ((mode === "stock" || mode === "tw") ? "股數" : "持有數量（顆）");
   $("modeHint").textContent = MODE_HINTS[mode] || "";
 }
 $("aMode").onchange = () => applyMode($("aMode").value);
@@ -664,6 +692,7 @@ function startEdit(id) {
   editingId = id;
   $("formTitle").textContent = "編輯資產";
   $("aName").value = a.name; $("aType").value = a.type;
+  if ($("aType").value !== a.type) $("aType").value = "其他";   // 舊類別相容
   $("aMode").value = a.mode || "manual"; applyMode(a.mode || "manual");
   $("aVal").value = a.mode === "manual" ? (a.value ?? "") : "";
   $("aSymbol").value = a.symbol || "";
@@ -696,9 +725,9 @@ $("btnSaveAsset").onclick = async () => {
     const qty = +$("aQty").value;
     if (!(qty > 0)) { toast(mode === "usd" ? "請填美元金額" : "請填數量"); return; }
     obj.qty = qty;
-    if (mode === "crypto" || mode === "stock") {
+    if (mode === "crypto" || mode === "stock" || mode === "tw") {
       const symbol = $("aSymbol").value.trim();
-      if (!symbol) { toast(mode === "stock" ? "請填美股代號" : "請填幣種 ID"); return; }
+      if (!symbol) { toast(mode === "crypto" ? "請填幣種 ID" : "請填股票代號"); return; }
       obj.symbol = symbol;
     } else obj.symbol = null;
   }
