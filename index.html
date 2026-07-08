@@ -512,27 +512,31 @@ async function refreshQuotes(showToast = true) {
         if (!fx) issues.push("匯率");
       } catch { issues.push("匯率"); }
     }
-    // 3) 台股（證交所／櫃買 OpenAPI，收盤價，免金鑰）
+    // 3) 台股（證交所／櫃買 OpenAPI，收盤價，免金鑰；三個來源輪流補）
+    const num = v => +String(v ?? "").replace(/,/g, "");
     const twCodes = [...new Set(autos.filter(a => a.mode === "tw").map(a => (a.symbol||"").trim()).filter(Boolean))];
     const twPrices = {};
     if (twCodes.length) {
-      try {
-        const r = await fetch("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL");
-        const arr = await r.json();
-        for (const row of arr) if (twCodes.includes(row.Code)) twPrices[row.Code] = +row.ClosingPrice;
-      } catch {}
-      const missing = twCodes.filter(c => !(twPrices[c] > 0));
-      if (missing.length) {
+      const twSources = [
+        ["https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", r => [r.Code, r.ClosingPrice]],
+        ["https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_AVG_ALL", r => [r.Code, r.ClosingPrice]],
+        ["https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", r => [r.SecuritiesCompanyCode || r.Code, r.Close ?? r.ClosingPrice]]
+      ];
+      for (const [url, pick] of twSources) {
+        if (twCodes.every(c => twPrices[c] > 0)) break;
         try {
-          const r = await fetch("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes");
+          const r = await fetch(url);
           const arr = await r.json();
           for (const row of arr) {
-            const code = row.SecuritiesCompanyCode || row.Code;
-            if (missing.includes(code)) twPrices[code] = +(row.Close || row.ClosingPrice);
+            const [code, price] = pick(row);
+            if (twCodes.includes(code) && !(twPrices[code] > 0)) {
+              const p = num(price);
+              if (p > 0) twPrices[code] = p;
+            }
           }
         } catch {}
       }
-      twCodes.filter(c => !(twPrices[c] > 0)).forEach(c => issues.push("台股 " + c));
+      twCodes.filter(c => !(twPrices[c] > 0)).forEach(c => issues.push("台股 " + c + "（查無收盤價）"));
     }
     // 4) 美股個股（Finnhub，需金鑰）
     const key = (data.settings.finnhubKey || "").trim();
@@ -551,7 +555,7 @@ async function refreshQuotes(showToast = true) {
     // 套用到各資產
     for (const a of autos) {
       if (a.mode === "crypto") {
-        const p = cg[(a.symbol||"").trim().toLowerCase()]?.twd;
+        const p = cg[idBySym[(a.symbol||"").trim().toLowerCase()]]?.twd;
         if (p) a.value = p * (+a.qty || 0); else issues.push(a.name);
       } else if (a.mode === "tw") {
         const p = twPrices[(a.symbol||"").trim()];
@@ -623,7 +627,7 @@ function renderHome() {
   $("totalSub").textContent = `約 ${fmtWan(V0)}｜目標 ${fmtWan(G)}（${(V0/G*100).toFixed(1)}%）`;
 
   // 已填成本的部位 → 顯示總損益
-  const withCost = data.assets.filter(a => +a.cost > 0);
+  const withCost = data.assets.filter(a => +a.cost > 0 && !(a.mode && a.mode !== "manual" && !(+a.value > 0)));
   if (withCost.length) {
     const c = withCost.reduce((s,a)=>s+(+a.cost), 0);
     const v = withCost.reduce((s,a)=>s+(+a.value||0), 0);
@@ -677,7 +681,7 @@ function renderHome() {
 }
 
 function modeMeta(a){
-  if (a.mode === "crypto") return `${a.symbol} × ${(+a.qty||0).toLocaleString("zh-TW")}｜自動`;
+  if (a.mode === "crypto") return `${(a.symbol||"").toUpperCase()} × ${(+a.qty||0).toLocaleString("zh-TW")}｜自動`;
   if (a.mode === "tw")     return `台股 ${a.symbol} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
   if (a.mode === "usd")    return `USD ${(+a.qty||0).toLocaleString("zh-TW")}｜依匯率自動換算`;
   if (a.mode === "stock")  return `${(a.symbol||"").toUpperCase()} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
@@ -689,7 +693,11 @@ function renderAssets() {
   if (!data.assets.length) { list.innerHTML = '<div class="hint">還沒有資產，從下方新增。</div>'; return; }
   for (const a of data.assets) {
     const meta = modeMeta(a);
-    const pl = (+a.cost > 0) ? `<div class="pl">${plHtml((+a.value||0) - (+a.cost))}</div>` : "";
+    const noQuote = a.mode && a.mode !== "manual" && !(+a.value > 0);
+    const pl = (!noQuote && +a.cost > 0) ? `<div class="pl">${plHtml((+a.value||0) - (+a.cost))}</div>` : "";
+    const valHtml = noQuote
+      ? `<div class="val" style="font-size:.78rem; color:var(--gold)">尚未取得報價</div>`
+      : `<div class="val num">${fmt(a.value||0)}</div>`;
     const row = document.createElement("div");
     row.className = "row";
     row.innerHTML = `
@@ -701,7 +709,7 @@ function renderAssets() {
           <a href="#" class="del" data-del="${a.id}">刪除</a>
         </div>
       </div>
-      <div><div class="val num">${fmt(a.value||0)}</div>${pl}</div>`;
+      <div>${valHtml}${pl}</div>`;
     list.appendChild(row);
   }
   list.querySelectorAll("[data-edit]").forEach(el => el.onclick = e => { e.preventDefault(); startEdit(el.dataset.edit); });
