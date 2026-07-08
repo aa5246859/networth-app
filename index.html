@@ -504,7 +504,7 @@ async function refreshQuotes(showToast = true) {
     }
     // 2) 匯率（USD→TWD）
     let fx = null;
-    if (autos.some(a => a.mode === "usd" || a.mode === "stock" || (a.mode === "crypto" && +a.costPer > 0 && !(+a.costFx > 0)))) {
+    if (autos.some(a => a.mode === "usd" || a.mode === "stock" || a.mode === "crypto")) {
       try {
         const r = await fetch("https://open.er-api.com/v6/latest/USD");
         const j = await r.json();
@@ -534,6 +534,41 @@ async function refreshQuotes(showToast = true) {
               if (p > 0) twPrices[code] = p;
             }
           }
+        } catch {}
+      }
+      // 來源 4：證交所每日收盤行情（含 ETF，往回找最近交易日）
+      let missing = twCodes.filter(c => !(twPrices[c] > 0));
+      for (let back = 0; back < 6 && missing.length; back++) {
+        const d = new Date(Date.now() - back * 86400000);
+        const ds = d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0");
+        try {
+          const r = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=${ds}&type=ALLBUT0999&response=json`);
+          const j = await r.json();
+          const tables = j.tables || (j.fields ? [j] : []);
+          for (const t of tables) {
+            const fi = (t.fields||[]).indexOf("證券代號");
+            const ci = (t.fields||[]).indexOf("收盤價");
+            if (fi < 0 || ci < 0) continue;
+            for (const row of (t.data||[])) {
+              const code = row[fi];
+              if (missing.includes(code)) {
+                const p = num(row[ci]);
+                if (p > 0) twPrices[code] = p;
+              }
+            }
+          }
+        } catch {}
+        missing = twCodes.filter(c => !(twPrices[c] > 0));
+      }
+      // 來源 5：FinMind（逐檔查最近收盤）
+      for (const c of twCodes.filter(c => !(twPrices[c] > 0))) {
+        try {
+          const start = new Date(Date.now() - 10 * 86400000).toISOString().slice(0,10);
+          const r = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${c}&start_date=${start}`);
+          const j = await r.json();
+          const rows = j?.data || [];
+          const p = num(rows[rows.length - 1]?.close);
+          if (p > 0) twPrices[c] = p;
         } catch {}
       }
       twCodes.filter(c => !(twPrices[c] > 0)).forEach(c => issues.push("台股 " + c + "（查無收盤價）"));
@@ -691,10 +726,15 @@ function modeMeta(a){
 function renderAssets() {
   const list = $("assetList"); list.innerHTML = "";
   if (!data.assets.length) { list.innerHTML = '<div class="hint">還沒有資產，從下方新增。</div>'; return; }
+  const fx = +data.quotes?.fx || 0;
   for (const a of data.assets) {
     const meta = modeMeta(a);
     const noQuote = a.mode && a.mode !== "manual" && !(+a.value > 0);
     const pl = (!noQuote && +a.cost > 0) ? `<div class="pl">${plHtml((+a.value||0) - (+a.cost))}</div>` : "";
+    // 美元計價資產 → 加顯示美元等值
+    const isUsd = (a.mode === "crypto" || a.mode === "stock" || a.mode === "usd");
+    const usdLine = (!noQuote && isUsd && fx > 0 && +a.value > 0)
+      ? `<div class="row-meta num" style="text-align:right">≈ US$ ${(+a.value / fx).toLocaleString("en-US",{maximumFractionDigits:0})}</div>` : "";
     const valHtml = noQuote
       ? `<div class="val" style="font-size:.78rem; color:var(--gold)">尚未取得報價</div>`
       : `<div class="val num">${fmt(a.value||0)}</div>`;
@@ -709,7 +749,7 @@ function renderAssets() {
           <a href="#" class="del" data-del="${a.id}">刪除</a>
         </div>
       </div>
-      <div>${valHtml}${pl}</div>`;
+      <div>${valHtml}${usdLine}${pl}</div>`;
     list.appendChild(row);
   }
   list.querySelectorAll("[data-edit]").forEach(el => el.onclick = e => { e.preventDefault(); startEdit(el.dataset.edit); });
@@ -802,7 +842,7 @@ $("btnSaveAsset").onclick = async () => {
     }
     if (mode === "crypto" || mode === "stock" || mode === "tw") {
       const symbol = $("aSymbol").value.trim();
-      if (!symbol) { toast(mode === "crypto" ? "請填幣種 ID" : "請填股票代號"); return; }
+      if (!symbol) { toast(mode === "crypto" ? "請填幣種代號" : "請填股票代號"); return; }
       obj.symbol = symbol;
     } else obj.symbol = null;
   }
