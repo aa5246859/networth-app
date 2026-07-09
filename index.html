@@ -109,7 +109,7 @@ nav a{
   font-size:.68rem; padding:6px 0; border-radius:10px;
 }
 nav a svg{display:block; margin:0 auto 3px; width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
-nav a.on{color:var(--gold)}
+nav a.on{color:var(--gold); background:rgba(227,179,76,.08)}
 
 #login{
   min-height:100dvh; display:flex; flex-direction:column; justify-content:center; align-items:center;
@@ -129,6 +129,15 @@ nav a.on{color:var(--gold)}
 #toast.show{opacity:1}
 .spark{width:100%; height:120px; margin-top:8px}
 .hint{font-size:.72rem; color:var(--mut); line-height:1.7; margin-top:10px}
+details.guide{margin:10px 0 2px}
+details.guide summary{cursor:pointer; font-size:.74rem; color:var(--gold); list-style:none; user-select:none}
+details.guide summary::-webkit-details-marker{display:none}
+details.guide summary::before{content:"ⓘ "}
+.guide-list{margin-top:8px; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.guide-list > div{display:flex; gap:10px; padding:9px 11px; font-size:.72rem; border-bottom:1px solid var(--line); align-items:baseline}
+.guide-list > div:last-child{border-bottom:none}
+.guide-list b{color:var(--ink); flex:0 0 72px; font-weight:500}
+.guide-list span{color:var(--mut); line-height:1.55}
 dialog{
   border:1px solid var(--line); border-radius:var(--radius); background:var(--card); color:var(--ink);
   width:min(92vw,420px); padding:20px; margin:auto;
@@ -227,6 +236,16 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <option value="usd">自動：美元金額 × 當日匯率（免設定）</option>
         <option value="stock">自動：美股代號報價（需 Finnhub 金鑰）</option>
       </select>
+      <details class="guide">
+        <summary>該選哪種？30 秒指南</summary>
+        <div class="guide-list">
+          <div><b>手動輸入</b><span>現金、定存等沒有報價的資產</span></div>
+          <div><b>加密貨幣</b><span>幣類（ADA、BTC…），全自動</span></div>
+          <div><b>台股代號</b><span>台股與 ETF（2330、0050），全自動</span></div>
+          <div><b>美元金額</b><span>美元現金或美股帳戶總值，只自動換匯</span></div>
+          <div><b>美股代號</b><span>美股個股全自動，需 Finnhub 免費金鑰</span></div>
+        </div>
+      </details>
       <div id="fVal">
         <label for="aVal">目前價值（新台幣）</label>
         <input id="aVal" type="number" inputmode="decimal" placeholder="輸入金額">
