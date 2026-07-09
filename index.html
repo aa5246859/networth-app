@@ -213,10 +213,12 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       <div class="eyebrow" id="formTitle">新增資產</div>
       <label for="aName">名稱</label>
       <input id="aName" placeholder="輸入資產名稱">
-      <label for="aType">類別</label>
-      <select id="aType">
-        <option>加密貨幣</option><option>台股</option><option>美股</option><option>現金</option><option>其他</option>
-      </select>
+      <div id="fType">
+        <label for="aType">類別</label>
+        <select id="aType">
+          <option>加密貨幣</option><option>台股</option><option>美股</option><option>現金</option><option>其他</option>
+        </select>
+      </div>
       <label for="aMode">價格更新方式</label>
       <select id="aMode">
         <option value="manual">手動輸入現值</option>
@@ -715,8 +717,15 @@ function renderHome() {
   );
 }
 
+/* 類別由更新方式自動決定；手動模式才由使用者選 */
+const TYPE_BY_MODE = { crypto: "加密貨幣", tw: "台股", stock: "美股", usd: "美元資產" };
+const ID2SYM = Object.fromEntries(Object.entries(SYM2ID).map(([s, i]) => [i, s.toUpperCase()]));
+
 function modeMeta(a){
-  if (a.mode === "crypto") return `${(a.symbol||"").toUpperCase()} × ${(+a.qty||0).toLocaleString("zh-TW")}｜自動`;
+  if (a.mode === "crypto") {
+    const disp = ID2SYM[(a.symbol||"").toLowerCase()] || (a.symbol||"").toUpperCase();
+    return `${disp} × ${(+a.qty||0).toLocaleString("zh-TW")}｜自動`;
+  }
   if (a.mode === "tw")     return `台股 ${a.symbol} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
   if (a.mode === "usd")    return `USD ${(+a.qty||0).toLocaleString("zh-TW")}｜依匯率自動換算`;
   if (a.mode === "stock")  return `${(a.symbol||"").toUpperCase()} × ${(+a.qty||0).toLocaleString("zh-TW")} 股｜自動`;
@@ -742,7 +751,7 @@ function renderAssets() {
     row.className = "row";
     row.innerHTML = `
       <div>
-        <span class="name">${esc(a.name)}</span><span class="tag">${esc(a.type)}</span>
+        <span class="name">${esc(a.name)}</span><span class="tag">${esc(TYPE_BY_MODE[a.mode] || a.type || "其他")}</span>
         ${meta ? `<div class="row-meta">${esc(meta)}</div>` : ""}
         <div class="row-actions">
           <a href="#" data-edit="${a.id}">編輯</a>
@@ -767,6 +776,7 @@ const MODE_HINTS = {
 function applyMode(mode){
   $("fVal").classList.toggle("hidden", mode !== "manual");
   $("fCost").classList.toggle("hidden", mode !== "manual");
+  $("fType").classList.toggle("hidden", mode !== "manual");
   $("fSymbol").classList.toggle("hidden", !(mode === "crypto" || mode === "stock" || mode === "tw"));
   $("fQty").classList.toggle("hidden", mode === "manual");
   $("fCostPer").classList.toggle("hidden", mode === "manual");
@@ -815,7 +825,8 @@ $("btnSaveAsset").onclick = async () => {
   const mode = $("aMode").value;
   if (!name) { toast("請填名稱"); return; }
 
-  const obj = { name, type: $("aType").value, mode, cost: null, costPer: null, costFx: null };
+  const obj = { name, mode, cost: null, costPer: null, costFx: null };
+  obj.type = mode === "manual" ? $("aType").value : TYPE_BY_MODE[mode];
   if (mode === "manual") {
     const value = +$("aVal").value;
     if (!(value >= 0)) { toast("請填目前價值"); return; }
