@@ -211,7 +211,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     </div>
     <div class="card">
       <div class="eyebrow" id="formTitle">新增資產</div>
-      <label for="aName">名稱</label>
+      <label for="aName" id="lblName">名稱</label>
       <input id="aName" placeholder="輸入資產名稱">
       <div id="fType">
         <label for="aType">類別</label>
@@ -768,12 +768,15 @@ function renderAssets() {
 /* ---------- 表單：模式切換 ---------- */
 const MODE_HINTS = {
   manual: "自己輸入現值與本金，價格不會自動變動。",
-  crypto: "填幣種代號（例：ADA、BTC、ETH、SOL），自動抓台幣報價。本金 = 單位成本 × 數量 × 匯率，自動算。",
+  crypto: "填幣種代號（例：ADA、BTC、ETH、SOL），自動抓台幣報價。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 損益只反映幣價漲跌。",
   tw: "台股代號（例：2330、0050），上市上櫃都支援，每天收盤後自動更新。本金 = 每股成本 × 股數，自動算。",
-  usd: "現值填美元總金額（例如券商帳戶總值），每天依匯率換算台幣。本金 = 美元成本 × 匯率，自動算。現值變動記得回來改。",
-  stock: "美股代號（例：AAPL、TSLA），自動抓股價 × 匯率，需在「設定」貼 Finnhub 免費金鑰。本金 = 每股成本 × 股數 × 匯率，自動算。"
+  usd: "現值填美元總金額（例如券商帳戶總值），每天依匯率換算台幣。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 只反映帳戶美元增減。現值變動記得回來改。",
+  stock: "美股代號（例：AAPL、TSLA），自動抓股價 × 匯率，需在「設定」貼 Finnhub 免費金鑰。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 損益只反映股價漲跌。"
 };
 function applyMode(mode){
+  const isCode = (mode === "crypto" || mode === "stock" || mode === "tw");
+  $("lblName").textContent = isCode ? "名稱（選填，留空自動用代號）" : "名稱";
+  $("aName").placeholder = isCode ? "留空自動用代號" : "輸入資產名稱";
   $("fVal").classList.toggle("hidden", mode !== "manual");
   $("fCost").classList.toggle("hidden", mode !== "manual");
   $("fType").classList.toggle("hidden", mode !== "manual");
@@ -821,8 +824,12 @@ function resetForm() {
 }
 
 $("btnSaveAsset").onclick = async () => {
-  const name = $("aName").value.trim();
   const mode = $("aMode").value;
+  const symRaw = $("aSymbol").value.trim();
+  let name = $("aName").value.trim();
+  if (!name && (mode === "crypto" || mode === "stock" || mode === "tw"))
+    name = mode === "tw" ? symRaw : symRaw.toUpperCase();   // 名稱留空 → 自動用代號
+  if (!name && mode === "usd") name = "美元資產";
   if (!name) { toast("請填名稱"); return; }
 
   const obj = { name, mode, cost: null, costPer: null, costFx: null };
@@ -852,9 +859,8 @@ $("btnSaveAsset").onclick = async () => {
       // 沒填匯率的美元成本 → 更新報價時用最新匯率算
     }
     if (mode === "crypto" || mode === "stock" || mode === "tw") {
-      const symbol = $("aSymbol").value.trim();
-      if (!symbol) { toast(mode === "crypto" ? "請填幣種代號" : "請填股票代號"); return; }
-      obj.symbol = symbol;
+      if (!symRaw) { toast(mode === "crypto" ? "請填幣種代號" : "請填股票代號"); return; }
+      obj.symbol = symRaw;
     } else obj.symbol = null;
   }
 
