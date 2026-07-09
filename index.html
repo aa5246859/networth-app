@@ -240,7 +240,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <summary>該選哪種？30 秒指南</summary>
         <div class="guide-list">
           <div><b>手動輸入</b><span>現金、定存等沒有報價的資產</span></div>
-          <div><b>加密貨幣</b><span>幣類（ADA、BTC…），全自動</span></div>
+          <div><b>加密貨幣</b><span>幣類（BTC、ETH），全自動</span></div>
           <div><b>台股代號</b><span>台股與 ETF（2330、0050），全自動</span></div>
           <div><b>美元金額</b><span>美元現金或美股帳戶總值，只自動換匯</span></div>
           <div><b>美股代號</b><span>美股個股全自動，需 Finnhub 免費金鑰</span></div>
@@ -787,7 +787,7 @@ function renderAssets() {
 /* ---------- 表單：模式切換 ---------- */
 const MODE_HINTS = {
   manual: "自己輸入現值與本金，價格不會自動變動。",
-  crypto: "填幣種代號（例：ADA、BTC、ETH、SOL），自動抓台幣報價。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 損益只反映幣價漲跌。",
+  crypto: "填幣種代號（例：BTC、ETH、SOL），自動抓台幣報價。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 損益只反映幣價漲跌。",
   tw: "台股代號（例：2330、0050），上市上櫃都支援，每天收盤後自動更新。本金 = 每股成本 × 股數，自動算。",
   usd: "現值填美元總金額（例如券商帳戶總值），每天依匯率換算台幣。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 只反映帳戶美元增減。現值變動記得回來改。",
   stock: "美股代號（例：AAPL、TSLA），自動抓股價 × 匯率，需在「設定」貼 Finnhub 免費金鑰。成本匯率填「買入時匯率」→ 損益包含匯差；留空 → 損益只反映股價漲跌。"
