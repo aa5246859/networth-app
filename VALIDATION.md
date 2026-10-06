@@ -22,7 +22,7 @@ JavaScript 語法與本地檔案引用另外檢查。測試使用交易與頁面
 ## 尚未完成的實機／線上檢查
 
 - 本機沒有 Playwright 所需的瀏覽器執行檔；遠端瀏覽器阻擋 localhost 與本機檔案網址。`tests/ui.test.mjs` 未成功執行，因此沒有通過手機寬度、實際點擊或視覺截圖的宣稱。
-- 未部署／執行 Firestore 規則；尚未使用 Firebase Emulator、Rules Playground 或不同 Google 帳號檢查後端授權。
+- 10 項 Firebase Emulator 規則測試已通過；真實 Firebase 規則尚未發布，Rules Playground 與真實跨帳號驗收待完成。
 - 未使用你的真實 Firebase 資料進行轉換，也未連線測試正式網域上的外部報價來源、CORS、金鑰或來源限制。
 - 未更新 GitHub repository、GitHub Pages 或正式 PWA。
 
@@ -43,3 +43,9 @@ JavaScript 語法與本地檔案引用另外檢查。測試使用交易與頁面
 ## 2.4 驗證
 
 46 項本機測試通過。新增測試涵蓋舊紀錄預設收合、每頁最多 10 筆、翻頁維持展開、末頁不足 10 筆、上下頁邊界及資料完整保留。總覽、持倉與資產紀錄的操作已移入對應卡片。JavaScript 語法、部署副本一致性及 ZIP 完整性檢查完成。瀏覽器實機畫面及原生 details 點擊仍待驗收，未部署。
+
+## 上線前 Firebase Emulator 驗證（2026-10-06）
+
+10 項規則測試通過，使用獨立 demo-wealth-tracker 專案，沒有存取正式 Firebase 資料。驗證待核准申請、禁止自行核准、管理員核准及拒絕、未核准／拒絕／未驗證／匿名拒絕、私人資料隔離、持倉唯讀分享與查询、僅已發布策略可讀、分開授權及撤銷、不可覆寫備份、舊版覆寫阻擋、有效資料寫入與邀請接受權限。
+
+執行：`npm install` 後執行 `npm run test:rules`。需 Java 17 以上（已驗證環境 Java 17、Node 24、Firebase CLI 14.27.0）。這不代表正式規則已發布，也不代表真實登入或 Safari 排版驗收完成。

@@ -20,7 +20,7 @@
 
 管理員仍為原設定的已驗證 Google 帳號。普通使用者需先取得 `access/{uid}.status = approved`，才能使用 App 或讀取授權分享。新使用者可以建立 `pending` 申請，不能自己改為 `approved`。
 
-如果 Firebase 指出規則語法或權限錯誤，先停止更新網站並修正規則，不要用全開放規則繞過。此環境沒有執行 Firebase Emulator 或 Rules Playground，發布前的驗證是必要待辦。
+如果 Firebase 指出規則語法或權限錯誤，先停止更新網站並修正規則，不要用全開放規則繞過。已通過 10 項 Firebase Emulator 規則測試；Rules Playground 與正式帳號驗收仍是發布前待辦。
 
 ## 3. 更新 GitHub 網站與手機安裝
 

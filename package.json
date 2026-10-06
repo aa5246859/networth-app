@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "pretest": "node scripts/build-preview.mjs && node scripts/build-comparison.mjs",
-    "test": "node --test tests/core.test.mjs tests/quotes.test.mjs tests/backup.test.mjs tests/store.test.mjs tests/view.test.mjs tests/pwa.test.mjs"
+    "test": "node --test tests/core.test.mjs tests/quotes.test.mjs tests/backup.test.mjs tests/store.test.mjs tests/view.test.mjs tests/pwa.test.mjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-wealth-tracker \"node --test tests/firestore-rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0",
+    "firebase-tools": "14.27.0"
   }
 }
