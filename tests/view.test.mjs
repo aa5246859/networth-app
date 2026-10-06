@@ -13,7 +13,7 @@ const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replac
 function harness(code=source,overrides={}){
   const nodes=new Map();
   for(const match of html.matchAll(/id="([^"]+)"/g)){
-    const classes=new Set();nodes.set(match[1],{textContent:'',innerHTML:'',open:false,className:'',classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>{if(on)classes.add(v);else classes.delete(v);}},addEventListener(){},close(){this.open=false;},showModal(){this.open=true;},elements:new Proxy({}, {get:(o,k)=>o[k]||(o[k]={value:'',checked:false})}),reset(){}});
+    const classes=new Set();nodes.set(match[1],{textContent:'',innerHTML:'',open:false,className:'',classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>{if(on)classes.add(v);else classes.delete(v);},contains:v=>classes.has(v)},addEventListener(){},close(){this.open=false;},showModal(){this.open=true;},elements:new Proxy({}, {get:(o,k)=>o[k]||(o[k]={value:'',checked:false})}),reset(){}});
   }
   const calls=[];
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
@@ -71,13 +71,17 @@ test('mobile financial goal date control stays within its card and keeps a usabl
   assert.match(styles,/#goalForm,#goalForm label\{width:100%;min-width:0;max-width:100%\}/);
 });
 
-test('account management opens inline, shows loading immediately, and displays fetched users',async()=>{
-  let finish;const cloud={isAdmin:()=>true,adminUsers:()=>new Promise(resolve=>{finish=resolve;})};
+test('account management toggles while loading and reuses the completed list',async()=>{
+  let finish,calls=0;const cloud={isAdmin:()=>true,adminUsers:()=>{calls++;return new Promise(resolve=>{finish=resolve;});}};
   const {api,nodes}=harness(source,{cloud});api.s.demo=false;api.s.user={uid:'admin',displayName:'管理者',email:'admin@example.com'};api.s.page='settings';api.render(true);
-  assert.match(nodes.get('content').innerHTML,/data-action="admin"/);
+  assert.match(nodes.get('content').innerHTML,/data-action="admin" aria-expanded="false" aria-controls="adminCard"/);
   assert.ok(nodes.get('content').innerHTML.indexOf('id="adminCard"')<nodes.get('content').innerHTML.indexOf('KEEP A COPY'));
-  const classes=new Set(['hidden']);nodes.set('adminCard',{innerHTML:'',classList:{remove:value=>classes.delete(value),add:value=>classes.add(value)}});
-  const loading=api.admin();assert.equal(classes.has('hidden'),false);assert.match(nodes.get('adminCard').innerHTML,/正在載入使用者名單/);
-  finish([{id:'new-user',name:'新使用者',email:'new@example.com',status:'pending'}]);await loading;
-  assert.match(nodes.get('adminCard').innerHTML,/new@example.com/);assert.match(nodes.get('adminCard').innerHTML,/data-action="approve"/);
+  const classes=new Set(['hidden']);const card={innerHTML:'',dataset:{},classList:{remove:value=>classes.delete(value),add:value=>classes.add(value),contains:value=>classes.has(value)}};nodes.set('adminCard',card);
+  const attrs=new Map([['aria-expanded','false']]);const button={dataset:{action:'admin'},textContent:'管理使用者',getAttribute:key=>attrs.get(key)||null,setAttribute:(key,value)=>attrs.set(key,value)};
+  const loading=api.admin(button);assert.equal(classes.has('hidden'),false);assert.match(card.innerHTML,/正在載入使用者名單/);assert.equal(button.textContent,'收合名單');
+  await api.admin(button);assert.equal(classes.has('hidden'),true);assert.equal(attrs.get('aria-expanded'),'false');assert.equal(button.textContent,'管理使用者');
+  const reopened=api.admin(button);assert.equal(classes.has('hidden'),false);assert.equal(calls,1,'Reopening during a request must not create duplicate cloud reads');
+  finish([{id:'new-user',name:'新使用者',email:'new@example.com',status:'pending'}]);await Promise.all([loading,reopened]);
+  assert.match(card.innerHTML,/new@example.com/);assert.match(card.innerHTML,/data-action="approve"/);assert.equal(card.dataset.loaded,'true');
+  await api.admin(button);assert.equal(classes.has('hidden'),true);await api.admin(button);assert.equal(classes.has('hidden'),false);assert.equal(calls,1,'Reopening a loaded panel should not refetch the list');
 });
