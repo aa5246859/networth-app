@@ -27,6 +27,7 @@ button svg{width:18px;height:18px}
 .eyebrow{display:none}
 .hero-top .eyebrow{display:block;font-size:15px;letter-spacing:0;color:var(--muted)}
 :focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+#content:focus{outline:none}
 .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:11px 16px;border-radius:11px;border:1px solid transparent;font-size:14px;line-height:1.45;font-weight:600;white-space:nowrap}
 .primary{background:var(--gold);color:#151208}
 .primary:hover{background:#efc567}
@@ -67,7 +68,7 @@ nav button:hover{background:var(--surface)}
 .topbar{min-height:76px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}
 .breadcrumb,.local-date{font-size:13px;color:var(--muted)}
 .topbar-right{display:flex;align-items:center;gap:18px}
-.avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface2);color:var(--gold);font-size:14px}
+.avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface2);color:var(--gold);font-size:14px}.avatar.has-photo{overflow:hidden;padding:0}.avatar-photo{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}.account-row .avatar{width:44px;height:44px;flex-shrink:0}
 .mobile-brand{display:none}
 .demo-banner{display:flex;justify-content:space-between;align-items:center;gap:12px;background:transparent;border:1px dashed var(--line);border-radius:10px;padding:9px 12px;margin-top:16px;color:var(--muted);font-size:13px}
 .demo-banner button{min-height:36px;background:none;border:0;color:var(--gold);font-size:13px;white-space:nowrap}
@@ -155,7 +156,7 @@ main{padding:32px 0 48px;min-width:0}
 .asset-table td.action-cell{padding-right:0;width:96px}
 .asset-name{display:flex;align-items:flex-start;gap:12px}
 .asset-name>div:last-child{min-width:0}
-.asset-icon{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;border-radius:10px;background:var(--surface2);border:1px solid var(--line);color:var(--gold);font-size:13px;font-weight:600}
+.asset-icon{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;border-radius:11px;background:color-mix(in srgb,var(--asset-accent) 12%,var(--surface2));border:1px solid color-mix(in srgb,var(--asset-accent) 42%,var(--line));color:var(--asset-accent);font-size:17px;font-weight:700;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--asset-accent) 12%,transparent)}.asset-icon.manual{--asset-accent:var(--gold)}
 .asset-title{font-size:16px;font-weight:600;overflow-wrap:anywhere}
 .asset-sub{font-size:13px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
 .asset-quote{font-size:13px;color:var(--muted);margin-top:5px;max-width:260px;overflow-wrap:anywhere}
@@ -180,6 +181,11 @@ main{padding:32px 0 48px;min-width:0}
 .share-grid .full,.settings-grid .full{grid-column:1/-1}
 .checkbox-row{display:flex;align-items:center;gap:12px;padding:15px 0;margin:0;font-size:14px;color:var(--ink);cursor:pointer;min-height:48px}
 .checkbox-row input{width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--gold)}
+.checkbox-row input[type=checkbox]{appearance:none;-webkit-appearance:none;width:22px;height:22px;min-width:22px;min-height:22px;border:1.5px solid #718078;border-radius:7px;background:var(--surface2);display:grid;place-content:center;cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+.checkbox-row input[type=checkbox]::after{content:"";width:5px;height:10px;border:solid transparent;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.checkbox-row input[type=checkbox]:checked{border-color:var(--gold);background:#26342b;box-shadow:0 0 0 2px #e3b34c1a}
+.checkbox-row input[type=checkbox]:checked::after{border-color:var(--gold)}
+.checkbox-row input[type=checkbox]:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 .share-asset-choice{border-bottom:1px solid var(--line)}
 .share-asset-choice:last-child{border-bottom:0}
 .share-asset-choice>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
@@ -231,7 +237,7 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .modal{background:var(--surface);border:1px solid #3f4b44;border-radius:18px;color:var(--ink);width:min(560px,calc(100vw - 28px));max-height:90dvh;padding:30px;margin:auto;overflow-y:auto;box-shadow:0 20px 70px #0005}
 .modal::backdrop{background:#050a07bd}
 .modal-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
-.modal-heading .icon-button{font-size:24px}
+.modal-heading .icon-button{width:44px;height:44px;min-height:44px;padding:0;font-size:18px;line-height:1;flex:0 0 44px}
 .form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:14px}
 .callout{padding:16px;background:var(--surface2);border-radius:10px;font-size:14px;line-height:1.9;color:var(--muted);margin-top:18px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
@@ -390,8 +396,8 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .card-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .holdings-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}
 .holdings-actions h2{font-size:18px}
-.card-actions .refresh-button{width:44px;min-width:44px;padding:10px;position:relative}
-.card-actions .refresh-button span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.card-actions .refresh-button{width:auto;min-width:44px;padding:10px 13px;position:relative;gap:7px;white-space:nowrap}
+.card-actions .refresh-button span{position:static;width:auto;height:auto;padding:0;margin:0;overflow:visible;clip-path:none;white-space:nowrap}
 .hero-top{min-height:44px}.hero-top .eyebrow{font-size:15px;color:var(--ink);font-weight:500}
 .quote-warning{font-size:13px;color:var(--gold);margin-top:8px}
 .record-actions{align-items:center;flex-wrap:nowrap;margin-bottom:12px}
