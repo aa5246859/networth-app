@@ -1,4 +1,4 @@
-import {VERSION,DEFAULT_SETTINGS} from "./config.js";
+import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.2";
 import {TYPES,finite,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,requiredRates,sharedAsset,parseAsset} from "./core.js";
 import {refreshMarket} from "./quotes.js";
 import {icon} from "./icons.js";

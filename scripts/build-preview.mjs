@@ -10,8 +10,8 @@ const js=[inlineModule(read('config.js')),inlineModule(read('core.js')),inlineMo
 let html=read('index.html')
   .replace(/<title>.*?<\/title>/,'<title>Wealth Tracker · 新版互動預覽</title>')
   .replace(/<link[^>]*rel="(manifest|icon|apple-touch-icon)"[^>]*>/g,'')
-  .replace('<link rel="stylesheet" href="styles.css">','<style>'+read('styles.css').replace(/@import[^;]*;/g,'')+'</style>')
-  .replace('<script type="module" src="app.js"></script>',()=>'<script>'+js.replace(/<\/script/gi,'<\\/script')+'</script>');
+  .replace('<link rel="stylesheet" href="styles.css?v='+read('config.js').match(/VERSION = "([^"]+)/)[1]+'">','<style>'+read('styles.css').replace(/@import[^;]*;/g,'')+'</style>')
+  .replace('<script type="module" src="app.js?v='+read('config.js').match(/VERSION = "([^"]+)/)[1]+'"></script>',()=>'<script>'+js.replace(/<\/script/gi,'<\\/script')+'</script>');
 const output=process.argv[2]||path.join(root,'preview.html');
 fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,html);
 console.log('Preview built:',output);

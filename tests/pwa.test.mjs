@@ -18,7 +18,7 @@ test('every app module and service-worker shell file exists and cache version ma
   assert.ok(sw.includes('wealth-tracker-v'+VERSION));
   for(const item of shell)assert.ok(fs.existsSync(new URL('../'+item,import.meta.url)),item);
   for(const name of ['app.js','store.js','backup.js'])for(const match of read(name).matchAll(/from ["'](\.\/[^"']+)["']/g))assert.ok(fs.existsSync(new URL('../'+match[1],import.meta.url)),match[1]);
-  const html=read('index.html');assert.ok(html.includes('viewport-fit=cover'));assert.ok(html.includes('apple-mobile-web-app-capable'));assert.ok(html.includes('apple-mobile-web-app-title'));
+  const html=read('index.html');assert.ok(html.includes('styles.css?v='+VERSION));assert.ok(html.includes('app.js?v='+VERSION));assert.ok(read('app.js').includes('./config.js?v='+VERSION));assert.ok(sw.includes('ignoreSearch:true'));assert.ok(html.includes('viewport-fit=cover'));assert.ok(html.includes('apple-mobile-web-app-capable'));assert.ok(html.includes('apple-mobile-web-app-title'));
 });
 test('comparison preview embeds the same complete app and has valid device-switching JavaScript',()=>{
   const html=read('device-preview.html');const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];new vm.Script(script);
