@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {buildBackup,parseBackup} from '../backup.js';
+import {valuation,stamp} from '../core.js';
+const asset={id:'old',name:'Cash',mode:'manual',type:'現金',value:200,cost:100};
+const post={id:'post',title:'Plan',symbol:'TEST',term:'long',thesis:'Reason',entry:'',invalidation:'',target:'',status:'watching',published:true};
+const state={settings:{goal:1000,targetDate:'2030-01-01',monthly:20,finnhubKey:'SECRET',extraKey:'SECRET'},assets:[asset],history:[{date:'2026-10-06',total:200}],ownPosts:[post]};
+test('backup round-trip preserves value, goals and strategies but removes secrets and grants',()=>{const backup=buildBackup({...state,published:{viewerUids:['private-viewer']}});assert.ok(!JSON.stringify(backup).includes('SECRET'));assert.ok(!JSON.stringify(backup).includes('private-viewer'));const restored=parseBackup(backup);assert.equal(valuation(restored.assets[0]).value,200);assert.notEqual(restored.assets[0].id,'old');assert.equal(restored.settings.goal,1000);assert.equal(restored.strategies[0].published,false);assert.notEqual(restored.strategies[0].id,'post');});
+test('pending quotes survive backup restore without inventing current value or P&L',()=>{const restored=parseBackup({assets:[{name:'Stock',mode:'stock',symbol:'TEST',qty:10,costPer:1,quote:{nativePrice:null,fx:null}}],history:[]});assert.equal(valuation(restored.assets[0]).value,null);assert.equal(valuation(restored.assets[0]).pnl,null);});
+test('invalid values and negative prices reject the entire parsed backup',()=>{assert.throws(()=>parseBackup({assets:[{...asset,value:'broken'}],history:[]}));assert.throws(()=>parseBackup({assets:[{name:'Stock',mode:'stock',symbol:'TEST',qty:10,quote:{nativePrice:-1}}],history:[]}));});
+test('invalid calendar dates and duplicate days cannot enter history',()=>{for(const history of [[{date:'2026-02-30',total:1}],[{date:'2026-01-01',total:1},{date:'2026-01-01',total:2}]])assert.throws(()=>parseBackup({assets:[],history}));});
+test('unknown backup versions and invalid strategies fail before writes',()=>{assert.throws(()=>parseBackup({version:3,assets:[],history:[]}));assert.throws(()=>parseBackup({assets:[],history:[],strategies:[{...post,term:'invalid'}]}));});
+test('corrupt quote timestamps never crash display formatting',()=>{assert.equal(stamp('not-a-date'),'時間未確認');assert.equal(stamp(null),'時間未確認');});

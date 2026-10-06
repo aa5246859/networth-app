@@ -1,16 +1,26 @@
 {
-  "name": "Wealth Tracker｜資產紀錄",
+  "name": "Wealth Tracker｜資產與策略",
   "short_name": "Wealth Tracker",
-  "description": "記錄資產變化，追蹤你的財務目標進度。",
+  "description": "管理持倉、追蹤財務目標，與信任的人分享策略。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#101614",
   "theme_color": "#101614",
   "lang": "zh-Hant",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-  ]
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "id": "./index.html"
 }
