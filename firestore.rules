@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function admin() {
+      return verified() && request.auth.token.email.lower() == "aaz52468599@gmail.com";
+    }
+    function approved() {
+      return verified() && (admin() ||
+        (exists(/databases/$(database)/documents/access/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/access/$(request.auth.uid)).data.status == "approved"));
+    }
+    function owner(uid) { return approved() && request.auth.uid == uid; }
+    function number(value) { return value is int || value is float; }
+    function portfolioViewer(uid) {
+      return approved() && exists(/databases/$(database)/documents/sharedPortfolios/$(uid)) &&
+        request.auth.uid in get(/databases/$(database)/documents/sharedPortfolios/$(uid)).data.viewerUids;
+    }
+    function strategyViewer(uid) {
+      return approved() && exists(/databases/$(database)/documents/strategyAccess/$(uid)) &&
+        request.auth.uid in get(/databases/$(database)/documents/strategyAccess/$(uid)).data.viewerUids;
+    }
+    function validAsset(assetId) {
+      let a = request.resource.data;
+      return a.id == assetId && a.name is string && a.name.size() > 0 && a.name.size() <= 80 &&
+        a.mode in ["manual", "crypto", "tw", "stock", "usd"] &&
+        (a.mode != "manual" || (number(a.value) && a.value >= 0)) &&
+        (a.mode == "manual" || (number(a.qty) && a.qty > 0));
+    }
+
+    match /users/{uid} {
+      allow read, create: if owner(uid);
+      // A legacy app cannot replace a migrated profile with an older array snapshot.
+      allow update: if owner(uid) &&
+        (!("schemaVersion" in resource.data) || resource.data.schemaVersion != 2 || request.resource.data.schemaVersion == 2);
+      allow delete: if false;
+      match /assets/{assetId} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && validAsset(assetId);
+      }
+      match /history/{date} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && request.resource.data.date == date &&
+          date.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") && number(request.resource.data.total) && request.resource.data.total >= 0;
+      }
+      match /backups/{backupId} {
+        allow read, create: if owner(uid);
+        allow update, delete: if false;
+      }
+    }
+
+    match /access/{uid} {
+      allow read: if verified() && (request.auth.uid == uid || admin());
+      allow create: if verified() && request.auth.uid == uid && request.resource.data.status == "pending" &&
+        request.resource.data.email.lower() == request.auth.token.email.lower() &&
+        request.resource.data.keys().hasOnly(["email", "name", "status", "requestedAt"]);
+      allow update, delete: if admin();
+    }
+
+    match /sharedPortfolios/{uid} {
+      allow read: if approved() && (request.auth.uid == uid || request.auth.uid in resource.data.viewerUids);
+      allow create, update: if owner(uid) &&
+        request.resource.data.keys().hasOnly(["ownerName", "viewerUids", "assets", "updatedAt"]) &&
+        request.resource.data.ownerName is string && request.resource.data.viewerUids is list &&
+        request.resource.data.viewerUids.size() <= 20 && request.resource.data.assets is list && request.resource.data.assets.size() <= 100;
+      allow delete: if owner(uid);
+    }
+    match /strategyAccess/{uid} {
+      allow read: if approved() && (request.auth.uid == uid || request.auth.uid in resource.data.viewerUids);
+      allow create, update: if owner(uid) &&
+        request.resource.data.keys().hasOnly(["ownerName", "viewerUids", "updatedAt"]) &&
+        request.resource.data.ownerName is string && request.resource.data.viewerUids is list && request.resource.data.viewerUids.size() <= 20;
+      allow delete: if owner(uid);
+    }
+
+    match /strategies/{uid}/posts/{postId} {
+      allow read: if owner(uid) || (strategyViewer(uid) && resource.data.published == true);
+      allow create, update: if owner(uid) && request.resource.data.id == postId && request.resource.data.ownerUid == uid &&
+        request.resource.data.keys().hasOnly(["id", "ownerUid", "ownerName", "title", "symbol", "term", "thesis", "entry", "invalidation", "target", "status", "published", "createdAt", "updatedAt"]) &&
+        request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 100 &&
+        request.resource.data.symbol is string && request.resource.data.symbol.size() > 0 && request.resource.data.symbol.size() <= 80 &&
+        request.resource.data.thesis is string && request.resource.data.thesis.size() > 0 && request.resource.data.thesis.size() <= 4000 &&
+        request.resource.data.term in ["long", "short"] && request.resource.data.status in ["watching", "active", "closed"] &&
+        request.resource.data.published is bool;
+      allow delete: if owner(uid);
+    }
+
+    match /shareInvites/{inviteId} {
+      allow read: if approved() && (resource.data.ownerUid == request.auth.uid || resource.data.recipientEmail == request.auth.token.email.lower());
+      allow create: if approved() && request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.keys().hasOnly(["ownerUid", "ownerName", "recipientEmail", "status", "createdAt"]) &&
+        request.resource.data.status == "pending" && request.resource.data.ownerName is string &&
+        request.resource.data.recipientEmail is string && request.resource.data.recipientEmail.size() <= 254 &&
+        request.resource.data.recipientEmail != request.auth.token.email.lower();
+      // A recipient can accept their own invitation, but cannot modify who owns it or who was invited.
+      allow update: if approved() && resource.data.status == "pending" &&
+        resource.data.recipientEmail == request.auth.token.email.lower() &&
+        request.resource.data.status == "accepted" && request.resource.data.viewerUid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "viewerUid", "acceptedAt"]);
+      allow delete: if approved() && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}
