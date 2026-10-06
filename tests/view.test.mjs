@@ -8,6 +8,7 @@ import * as backup from '../backup.js';
 import {icon} from '../icons.js';
 import {VERSION,DEFAULT_SETTINGS} from '../config.js';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const styles=fs.readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'');
 function harness(code=source,overrides={}){
   const nodes=new Map();
@@ -20,6 +21,7 @@ function harness(code=source,overrides={}){
   const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,assetIcon,avatarContent,installedMode,changeHistoryPage});',context);
   return {api,nodes,calls};
 }
+test("asset and strategy dialogs use a consistent accessible close icon without the oversized gold focus ring",()=>{const buttons=[...html.matchAll(/data-close="(assetDialog|strategyDialog)" aria-label="關閉">([\s\S]*?)<\/button>/g)];assert.equal(buttons.length,2);for(const button of buttons)assert.match(button[2],/<svg viewBox="0 0 24 24"/);assert.match(styles,/\.modal-heading \.icon-button\{[^}]*min-width:44px[^}]*min-height:44px/);assert.match(styles,/\.modal-heading \.icon-button::before\{content:"";position:absolute;inset:5px/);assert.match(styles,/\.modal-heading \.icon-button:focus-visible\{outline:none/);});
 test("manual quote refresh is never delayed by the previous refresh timestamp",async()=>{const {api,nodes}=harness();api.s.demo=true;api.s.user={uid:"demo-self",displayName:"小陽",email:"demo@example.com"};api.s.assets=[{id:"mstr",name:"MSTR",mode:"stock",symbol:"MSTR",qty:10,quote:{nativePrice:100,fx:32,fetchedAt:"2026-10-05T00:00:00Z",error:""}}];api.s.lastRefresh=Date.now();await api.refreshOwn(true);assert.match(nodes.get("toast").textContent,/示範行情已更新/);assert.equal(api.s.refreshing,false);});
 test('demo initializes all five views without touching Firebase or external quotes',()=>{const {api,nodes,calls}=harness();assert.equal((nodes.get('navigation').innerHTML.match(/data-page=/g)||[]).length,5);for(const page of ['home','assets','sharing','history','settings']){api.s.page=page;api.render(true);assert.ok(nodes.get('content').innerHTML.length>100);assert.ok(!nodes.get('content').innerHTML.includes('NaN'));}assert.equal(calls.length,0);});
 test("USD market value is clearly labeled and stale prices are identified as last successful values",()=>{const {api}=harness();const asset={id:"mstr",name:"MSTR",mode:"stock",symbol:"MSTR",qty:241,quote:{nativePrice:166.68,fx:31.78,fetchedAt:"2026-10-06T14:11:00Z",error:""}};assert.match(api.assetRows([asset]),/美元市值估算 · 約 US\$ 40,170/);asset.quote.error="報價更新失敗";assert.match(api.assetRows([asset]),/上次成功市值 · 約 US\$ 40,170/);});

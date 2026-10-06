@@ -237,7 +237,12 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .modal{background:var(--surface);border:1px solid #3f4b44;border-radius:18px;color:var(--ink);width:min(560px,calc(100vw - 28px));max-height:90dvh;padding:30px;margin:auto;overflow-y:auto;box-shadow:0 20px 70px #0005}
 .modal::backdrop{background:#050a07bd}
 .modal-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
-.modal-heading .icon-button{width:44px;height:44px;min-height:44px;padding:0;font-size:18px;line-height:1;flex:0 0 44px}
+.modal-heading .icon-button{position:relative;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;flex:0 0 44px;line-height:1;color:var(--muted);border-color:transparent;background:transparent;outline:none;box-shadow:none}
+.modal-heading .icon-button::before{content:"";position:absolute;inset:5px;border:1px solid var(--line);border-radius:9px;pointer-events:none;transition:background-color .15s,border-color .15s}
+.modal-heading .icon-button:hover::before{background:var(--surface2);border-color:#46554c}
+.modal-heading .icon-button svg{display:block;width:17px;height:17px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;fill:none}
+.modal-heading .icon-button:focus-visible{outline:none;box-shadow:none}
+.modal-heading .icon-button:focus-visible::before{border-color:#718078;box-shadow:0 0 0 1px var(--surface)}
 .form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:14px}
 .callout{padding:16px;background:var(--surface2);border-radius:10px;font-size:14px;line-height:1.9;color:var(--muted);margin-top:18px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}

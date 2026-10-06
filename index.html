@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-title" content="Wealth Tracker">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="styles.css?v=2.4.2">
+  <link rel="stylesheet" href="styles.css?v=2.4.3">
 </head>
 <body>
   <section id="loginView" class="login-view">
@@ -34,7 +34,7 @@
   <section id="pendingView" class="login-view hidden"><div class="login-card"><span class="brand-mark">W</span><h1 class="pending-title">等待使用授權</h1><p id="pendingMessage" class="login-description"></p><button class="button primary" data-action="recheck">重新檢查</button><button class="button secondary" data-action="logout">登出</button></div></section>
 
   <div id="appView" class="app-shell hidden">
-    <aside class="sidebar"><a class="brand" href="#home"><span class="brand-mark">W</span><span>Wealth<span class="brand-light"> Tracker</span><small>資產管理</small></span></a><div class="sidebar-caption">把今天的紀錄，<br>變成明天的方向。</div><nav id="navigation" aria-label="主要導覽"></nav><div class="sidebar-foot"><span class="status-dot"></span><span id="sidebarStatus">雲端同步</span><small>VERSION 2.4.2</small></div></aside>
+    <aside class="sidebar"><a class="brand" href="#home"><span class="brand-mark">W</span><span>Wealth<span class="brand-light"> Tracker</span><small>資產管理</small></span></a><div class="sidebar-caption">把今天的紀錄，<br>變成明天的方向。</div><nav id="navigation" aria-label="主要導覽"></nav><div class="sidebar-foot"><span class="status-dot"></span><span id="sidebarStatus">雲端同步</span><small>VERSION 2.4.3</small></div></aside>
     <div class="workspace">
       <header class="topbar"><div class="mobile-brand"><span class="brand-mark">W</span><span>Wealth Tracker</span></div><div class="breadcrumb" id="breadcrumb">我的資產 / 總覽</div><div class="topbar-right"><span class="local-date" id="localDate"></span><button class="avatar" id="userAvatar" data-action="account" aria-label="帳號與設定"></button></div></header>
       <div id="demoBanner" class="demo-banner hidden"><span>示範資料，未連接你的帳號</span><button data-action="exit-demo">返回登入 ↗</button></div>
@@ -44,7 +44,7 @@
   </div>
 
   <dialog id="assetDialog" class="modal"><form id="assetForm" novalidate>
-    <div class="modal-heading"><div><div class="eyebrow">MY PORTFOLIO</div><h2 id="assetDialogTitle">新增持倉</h2></div><button type="button" class="icon-button" data-close="assetDialog" aria-label="關閉">×</button></div>
+    <div class="modal-heading"><div><div class="eyebrow">MY PORTFOLIO</div><h2 id="assetDialogTitle">新增持倉</h2></div><button type="button" class="icon-button" data-close="assetDialog" aria-label="關閉"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <label>更新方式<select name="mode"><option value="stock">美股個股</option><option value="crypto">加密貨幣</option><option value="tw">台股／ETF</option><option value="usd">美元現金／帳戶</option><option value="manual">手動資產</option></select></label>
     <div class="form-grid"><label>名稱<input name="name" maxlength="80" placeholder="留空使用代號"></label><label id="symbolField">代號<input name="symbol" placeholder="例如 AAPL" maxlength="80" autocapitalize="characters" autocomplete="off"></label></div>
     <div class="form-grid values-grid"><label id="quantityField"><span id="quantityLabel">持有股數</span><input name="qty" type="number" min="0" step="any" inputmode="decimal" placeholder="例如 28"></label><label id="valueField" class="hidden">目前價值（台幣）<input name="value" type="number" min="0" step="any" inputmode="decimal"></label><label id="nativeCostField"><span id="nativeCostLabel">平均買入價（USD／股）</span><input name="costPer" type="number" min="0" step="any" inputmode="decimal" placeholder="選填"></label><label id="manualCostField" class="hidden">本金（台幣）<input name="cost" type="number" min="0" step="any" inputmode="decimal" placeholder="選填"></label></div>
@@ -56,7 +56,7 @@
   </form></dialog>
 
   <dialog id="strategyDialog" class="modal"><form id="strategyForm" novalidate>
-    <div class="modal-heading"><div><div class="eyebrow">TRADE WITH A PLAN</div><h2 id="strategyDialogTitle">新增交易策略</h2></div><button type="button" class="icon-button" data-close="strategyDialog" aria-label="關閉">×</button></div>
+    <div class="modal-heading"><div><div class="eyebrow">TRADE WITH A PLAN</div><h2 id="strategyDialogTitle">新增交易策略</h2></div><button type="button" class="icon-button" data-close="strategyDialog" aria-label="關閉"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <label>策略名稱<input name="title" maxlength="100" placeholder="例如：分批布局指數 ETF" required></label>
     <div class="form-grid"><label>持有週期<select name="term"><option value="long">長線</option><option value="short">短線</option></select></label><label>標的<input name="symbol" maxlength="80" placeholder="例如 0050 / BTC" required></label></div>
     <label>交易理由<textarea name="thesis" rows="3" maxlength="4000" placeholder="這筆交易的依據是什麼？" required></textarea></label>
@@ -69,6 +69,6 @@
 
   <dialog id="confirmDialog" class="modal small-modal"><h2 id="confirmTitle">確認操作</h2><p id="confirmText" class="muted"></p><div class="modal-actions"><button class="button secondary" data-close="confirmDialog">取消</button><button id="confirmAction" class="button danger">確認</button></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=2.4.2"></script>
+  <script type="module" src="app.js?v=2.4.3"></script>
 </body>
 </html>
