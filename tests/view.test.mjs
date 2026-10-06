@@ -18,7 +18,7 @@ function harness(code=source,overrides={}){
   const calls=[];
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
   const context={...core,...backup,VERSION,DEFAULT_SETTINGS,icon,cloud,refreshMarket:()=>{throw new Error('Demo must never call a market API');},document:{getElementById:name=>{if(!nodes.has(name))throw new Error('Missing element: '+name);return nodes.get(name);},addEventListener(){},body:{classList:{add(){},remove(){}}}},window:{addEventListener(){},scrollTo(){}},location:{search:'?demo=1',hash:''},navigator:{},URLSearchParams,URL,crypto:webcrypto,structuredClone,setTimeout:()=>0,clearTimeout(){},console,...overrides};
-  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,assetIcon,avatarContent,installedMode,changeHistoryPage});',context);
+  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,assetIcon,avatarContent,installedMode,changeHistoryPage,admin});',context);
   return {api,nodes,calls};
 }
 test("asset and strategy dialogs use a consistent accessible close icon without the oversized gold focus ring",()=>{const buttons=[...html.matchAll(/data-close="(assetDialog|strategyDialog)" aria-label="關閉">([\s\S]*?)<\/button>/g)];assert.equal(buttons.length,2);for(const button of buttons)assert.match(button[2],/<svg viewBox="0 0 24 24"/);assert.match(styles,/\.modal-heading \.icon-button\{[^}]*min-width:44px[^}]*min-height:44px/);assert.match(styles,/\.modal-heading \.icon-button::before\{content:"";position:absolute;inset:5px/);assert.match(styles,/\.modal-heading \.icon-button:focus-visible\{outline:none/);});
@@ -61,4 +61,23 @@ test('older history starts collapsed, pages in tens and retains its previous-rec
   api.changeHistoryPage(1);assert.equal((rows().match(/<tr>/g)||[]).length,5);api.changeHistoryPage(1);assert.equal(api.s.historyArchivePage,2);
   api.changeHistoryPage(-1);api.changeHistoryPage(-1);api.changeHistoryPage(-1);assert.equal(api.s.historyArchivePage,0);assert.equal(api.s.history.length,35);
   api.s.history=api.s.history.slice(0,10);api.render();assert.ok(!nodes.get('content').innerHTML.includes('id="olderHistory"'));
+});
+
+test('mobile financial goal date control stays within its card and keeps a usable date field',()=>{
+  const {api,nodes}=harness();api.s.page='settings';api.render(true);
+  const view=nodes.get('content').innerHTML;
+  assert.match(view,/<form id="goalForm"[\s\S]*?<input type="date" name="targetDate"/);
+  assert.match(styles,/input\[type=date\]\{[^}]*box-sizing:border-box[^}]*width:100%[^}]*min-width:0[^}]*max-width:100%/);
+  assert.match(styles,/#goalForm,#goalForm label\{width:100%;min-width:0;max-width:100%\}/);
+});
+
+test('account management opens inline, shows loading immediately, and displays fetched users',async()=>{
+  let finish;const cloud={isAdmin:()=>true,adminUsers:()=>new Promise(resolve=>{finish=resolve;})};
+  const {api,nodes}=harness(source,{cloud});api.s.demo=false;api.s.user={uid:'admin',displayName:'管理者',email:'admin@example.com'};api.s.page='settings';api.render(true);
+  assert.match(nodes.get('content').innerHTML,/data-action="admin"/);
+  assert.ok(nodes.get('content').innerHTML.indexOf('id="adminCard"')<nodes.get('content').innerHTML.indexOf('KEEP A COPY'));
+  const classes=new Set(['hidden']);nodes.set('adminCard',{innerHTML:'',classList:{remove:value=>classes.delete(value),add:value=>classes.add(value)}});
+  const loading=api.admin();assert.equal(classes.has('hidden'),false);assert.match(nodes.get('adminCard').innerHTML,/正在載入使用者名單/);
+  finish([{id:'new-user',name:'新使用者',email:'new@example.com',status:'pending'}]);await loading;
+  assert.match(nodes.get('adminCard').innerHTML,/new@example.com/);assert.match(nodes.get('adminCard').innerHTML,/data-action="approve"/);
 });

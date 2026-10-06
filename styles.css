@@ -217,6 +217,9 @@ main{padding:32px 0 48px;min-width:0}
 .account-row p{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
 .settings-buttons{display:flex;gap:10px;flex-wrap:wrap}
 .settings-grid form>.button{margin-top:22px}
+.admin-panel{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.admin-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.admin-loading{padding:12px 0}
 .admin-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 0;border-bottom:1px solid var(--line);font-size:14px}
 .admin-row .small{overflow-wrap:anywhere}
 .admin-actions{display:flex;gap:8px;flex-shrink:0}
@@ -230,7 +233,10 @@ label{display:block;font-size:15px;color:var(--muted);margin-top:16px}
 input,select,textarea{display:block;width:100%;min-width:0;max-width:100%;background:var(--surface2);border:1px solid var(--line);color:var(--ink);padding:12px 13px;border-radius:10px;margin-top:8px;font-size:16px;line-height:1.4;min-height:46px}
 input::placeholder,textarea::placeholder{color:#849087}
 input[type=checkbox]{display:inline-block;min-height:0}
-input[type=date]{min-height:48px}
+input[type=date]{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:48px;-webkit-appearance:none;appearance:none;padding-inline:12px}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+#goalForm,#goalForm label{width:100%;min-width:0;max-width:100%}
+#goalForm input{box-sizing:border-box;min-width:0;max-width:100%}
 input[type=number]::-webkit-inner-spin-button{appearance:none}
 textarea{resize:vertical;line-height:1.8}
 form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:none}
@@ -303,6 +309,10 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
   .segment{width:100%}
   .segment button{flex:1;min-width:0;padding:9px 8px;font-size:13px}
   .friend-select{width:100%;max-width:none}
+  .admin-heading{align-items:flex-start;flex-direction:column}
+  .admin-row{align-items:flex-start;flex-direction:column}
+  .admin-actions{width:100%}
+  .admin-actions .button{flex:1}
   .publish-row{flex-direction:column;align-items:stretch;gap:12px}
   .publish-row .button{width:100%}
   .toolbar{flex-wrap:wrap;gap:8px}
