@@ -190,6 +190,7 @@ export const setAccess=(uid,status)=>sdk.setDoc(d("access",uid),{status},{merge:
 
 export const loadReview=(uid,postId)=>reviewRepository(sdk,db).load(uid,postId);
 export const startReview=(uid,postId,voters,deadline,roundId)=>reviewRepository(sdk,db).start(uid,postId,voters,deadline,roundId);
-export const voteReview=(ownerUid,postId,roundId,uid,choice,reason)=>reviewRepository(sdk,db).vote(ownerUid,postId,roundId,uid,choice,reason);
-export const adoptStrategyReview=(ownerUid,postId,roundId,uid)=>reviewRepository(sdk,db).adopt(ownerUid,postId,roundId,uid);
+export const voteReview=(ownerUid,postId,roundId,uid,choice,reason,profile)=>reviewRepository(sdk,db).vote(ownerUid,postId,roundId,uid,choice,reason,profile);
 export const reviewHistory=(uid,postId)=>reviewRepository(sdk,db).history(uid,postId);
+export const submitTeacherStrategy=(uid,postId,profile,reason)=>reviewRepository(sdk,db).submitTeacher(uid,postId,profile,reason);
+export const teacherStrategyDecision=(ownerUid,postId,decision,profile,reason)=>reviewRepository(sdk,db).decideTeacher(ownerUid,postId,decision,profile,reason);

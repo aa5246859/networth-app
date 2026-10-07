@@ -109,31 +109,67 @@ service cloud.firestore {
       match /rounds/{roundId} {
         allow read: if reviewReaders(uid,postId);
         allow create: if owner(uid) && reviewPost(uid,postId).published == true &&
-          request.resource.data.keys().hasOnly(['roundId','strategyUpdatedAt','voterUids','deadlineMs','createdMs','choices','reasons','adoptedMs']) &&
+          request.resource.data.keys().hasOnly(['roundId','strategyUpdatedAt','voterUids','deadlineMs','createdMs','choices','reasons','voterProfiles','adoptedMs']) &&
           request.resource.data.roundId == roundId &&
           getAfter(/databases/$(database)/documents/strategyReviews/$(uid)/posts/$(postId)).data.roundId == roundId &&
           request.resource.data.strategyUpdatedAt == reviewPost(uid,postId).updatedAt &&
-          request.resource.data.voterUids is list && request.resource.data.voterUids.size() > 0 && request.resource.data.voterUids.size() <= 20 &&
+          request.resource.data.voterUids is list && request.resource.data.voterUids.size() > 0 && request.resource.data.voterUids.size() <= 100 &&
           request.resource.data.voterUids.toSet().size() == request.resource.data.voterUids.size() &&
           !(uid in request.resource.data.voterUids) && request.resource.data.voterUids.hasOnly(reviewAudience(uid)) &&
           number(request.resource.data.deadlineMs) && request.resource.data.deadlineMs > request.time.toMillis() &&
           request.resource.data.deadlineMs <= request.time.toMillis() + 2592000000 &&
           number(request.resource.data.createdMs) && request.resource.data.createdMs > request.time.toMillis() - 300000 &&
           request.resource.data.createdMs <= request.time.toMillis() + 120000 &&
-          request.resource.data.choices == {} && request.resource.data.reasons == {} && request.resource.data.adoptedMs == 0;
+          request.resource.data.choices == {} && request.resource.data.reasons == {} && request.resource.data.voterProfiles == {} && request.resource.data.adoptedMs == 0;
         allow update: if reviewReaders(uid,postId) && liveRound(uid,postId,roundId,resource.data) && (
-          (request.auth.uid in resource.data.voterUids &&
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['choices','reasons']) &&
+          request.auth.uid in resource.data.voterUids &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['choices','reasons','voterProfiles']) &&
            request.resource.data.choices is map && request.resource.data.reasons is map &&
+           request.resource.data.voterProfiles is map &&
            request.resource.data.choices.diff(resource.data.choices).affectedKeys().hasOnly([request.auth.uid]) &&
            request.resource.data.reasons.diff(resource.data.reasons).affectedKeys().hasOnly([request.auth.uid]) &&
+           request.resource.data.voterProfiles.diff(resource.data.get('voterProfiles',{})).affectedKeys().hasOnly([request.auth.uid]) &&
            request.resource.data.choices[request.auth.uid] in ['agree','reject'] &&
            request.resource.data.reasons[request.auth.uid] is string && request.resource.data.reasons[request.auth.uid].size() <= 500 &&
-           (request.resource.data.choices[request.auth.uid] == 'agree' || request.resource.data.reasons[request.auth.uid].size() > 0)) ||
-          (owner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['adoptedMs']) &&
-           resource.data.choices.keys().hasAll(resource.data.voterUids) && resource.data.choices.values().hasOnly(['agree']) &&
-           number(request.resource.data.adoptedMs) && request.resource.data.adoptedMs > request.time.toMillis() - 300000 &&
-           request.resource.data.adoptedMs <= request.time.toMillis() + 120000)
+           request.resource.data.voterProfiles[request.auth.uid].keys().hasOnly(['displayName','photoURL']) &&
+           request.resource.data.voterProfiles[request.auth.uid].displayName is string && request.resource.data.voterProfiles[request.auth.uid].displayName.size() <= 80 &&
+           request.resource.data.voterProfiles[request.auth.uid].photoURL is string && request.resource.data.voterProfiles[request.auth.uid].photoURL.size() <= 500
+        );
+        allow delete: if false;
+      }
+      match /teacher/{decisionId} {
+        allow read: if reviewReaders(uid,postId);
+        allow create: if owner(uid) && decisionId == 'current' && reviewPost(uid,postId).published == true &&
+          request.resource.data.keys().hasOnly(['decision','submittedBy','submitterName','reason','strategyUpdatedAt','submittedMs','reviewerUid','reviewerName','reviewerPhotoURL','decidedMs']) &&
+          request.resource.data.decision == 'pending' && request.resource.data.submittedBy == request.auth.uid &&
+          request.resource.data.submitterName is string && request.resource.data.submitterName.size() <= 80 &&
+          request.resource.data.reason is string && request.resource.data.reason.size() <= 500 &&
+          request.resource.data.strategyUpdatedAt == reviewPost(uid,postId).updatedAt && number(request.resource.data.submittedMs) &&
+          request.resource.data.reviewerUid == '' && request.resource.data.reviewerName == '' &&
+          request.resource.data.reviewerPhotoURL == '' && request.resource.data.decidedMs == 0;
+        allow update: if (
+          admin() && decisionId == 'current' && resource.data.decision == 'pending' &&
+          reviewPost(uid,postId).published == true && resource.data.strategyUpdatedAt == reviewPost(uid,postId).updatedAt &&
+          request.resource.data.keys().hasOnly(['decision','submittedBy','submitterName','reason','strategyUpdatedAt','submittedMs','reviewerUid','reviewerName','reviewerPhotoURL','decidedMs']) &&
+          request.resource.data.decision in ['approved','returned'] && request.resource.data.submittedBy == resource.data.submittedBy &&
+          request.resource.data.reviewerUid == request.auth.uid && request.resource.data.reviewerName is string && request.resource.data.reviewerName.size() <= 80 &&
+          request.resource.data.reviewerPhotoURL is string && request.resource.data.reviewerPhotoURL.size() <= 500 &&
+          request.resource.data.reason is string && request.resource.data.reason.size() <= 500 &&
+          request.resource.data.strategyUpdatedAt == resource.data.strategyUpdatedAt && request.resource.data.submittedMs == resource.data.submittedMs &&
+          number(request.resource.data.decidedMs) && request.resource.data.decidedMs > request.time.toMillis() - 300000 &&
+          request.resource.data.decidedMs <= request.time.toMillis() + 120000
+        ) || (
+          owner(uid) && decisionId == 'current' && reviewPost(uid,postId).published == true && request.resource.data.decision == 'pending' &&
+          resource.data.decision in ['approved','returned'] && request.resource.data.submittedBy == request.auth.uid &&
+          request.resource.data.strategyUpdatedAt == reviewPost(uid,postId).updatedAt &&
+          request.resource.data.keys().hasOnly(['decision','submittedBy','submitterName','reason','strategyUpdatedAt','submittedMs','reviewerUid','reviewerName','reviewerPhotoURL','decidedMs']) &&
+          request.resource.data.reviewerUid == '' && request.resource.data.reviewerName == '' && request.resource.data.reviewerPhotoURL == '' && request.resource.data.decidedMs == 0
+        ) || (
+          owner(uid) && decisionId == 'current' && reviewPost(uid,postId).published == true && request.resource.data.decision == 'pending' &&
+          resource.data.decision == 'pending' && resource.data.strategyUpdatedAt != reviewPost(uid,postId).updatedAt &&
+          request.resource.data.submittedBy == request.auth.uid && request.resource.data.strategyUpdatedAt == reviewPost(uid,postId).updatedAt &&
+          request.resource.data.keys().hasOnly(['decision','submittedBy','submitterName','reason','strategyUpdatedAt','submittedMs','reviewerUid','reviewerName','reviewerPhotoURL','decidedMs']) &&
+          request.resource.data.reviewerUid == '' && request.resource.data.reviewerName == '' && request.resource.data.reviewerPhotoURL == '' && request.resource.data.decidedMs == 0
         );
         allow delete: if false;
       }

@@ -490,6 +490,9 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .sr-actions .button{font-size:13px;padding:9px 13px;min-height:40px}
 .sr-voters{list-style:none;padding:0;margin:14px 0 0}
 .sr-voter{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sr-voter-person{display:flex;align-items:center;gap:9px;min-width:0;overflow-wrap:anywhere}
+.sr-avatar{display:inline-grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:50%;overflow:hidden;border:1px solid var(--line);background:var(--surface2);color:var(--gold);font-size:12px}
+.sr-avatar img{display:block;width:100%;height:100%;object-fit:cover}
 .sr-voter:last-child{border-bottom:0}
 .sr-voter small{grid-column:1/-1;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.7}
 .sr-demo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:12px}
@@ -507,3 +510,6 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .sr-history summary{cursor:pointer;padding:8px 0}
 .sr-round{padding:10px 0;border-top:1px solid var(--line)}
 .sr-round p{margin:4px 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.sr-teacher{border-top:1px solid var(--line);margin-top:16px;padding-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.sr-teacher .sr-actions{flex-basis:100%;margin-top:2px}
+.sr-teacher-result{font-size:12px;color:var(--muted);line-height:1.7;margin:12px 0 0;overflow-wrap:anywhere}

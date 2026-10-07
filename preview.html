@@ -1,10 +1,795 @@
-import {reviewState,createReview,castReviewVote,adoptReview} from './review.js';
-import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.11";
-import {TYPES,finite,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,requiredRates,sharedAsset,parseAsset} from "./core.js";
-import {refreshMarket} from "./quotes.js";
-import {icon} from "./icons.js";
-import {buildBackup,parseBackup} from "./backup.js";
-import * as cloud from "./store.js";
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101614">
+  <meta name="description" content="管理持倉、追蹤資產，與信任的人分享交易想法。">
+  <title>Wealth Tracker · 新版互動預覽</title>
+  
+  
+  
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-title" content="Wealth Tracker">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>:root {
+  --bg:#101614; --surface:#18211c; --surface2:#1e2923;
+  --ink:#f0ede4; --muted:#a2ada5; --line:#2a362f;
+  --gold:#e3b34c; --gain:#4ade80; --loss:#f87171;
+  color-scheme:dark;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei","Noto Sans TC","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--bg);font-size:16px;-webkit-text-size-adjust:100%;scroll-padding-top:24px}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.75;min-width:0;min-height:100dvh}
+button,input,select,textarea{font:inherit}
+button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
+button{cursor:pointer;-webkit-user-select:none;user-select:none}
+button:disabled{cursor:wait;opacity:.55}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p{margin:0}
+h1{font-size:30px;line-height:1.35;font-weight:700;letter-spacing:-.3px;text-wrap:balance}
+h2{font-size:20px;font-weight:600;line-height:1.45;text-wrap:balance}
+h3{font-size:17px;font-weight:600;line-height:1.5}
+svg{flex-shrink:0}
+button svg{width:18px;height:18px}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+.small{font-size:14px}
+.mono{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-variant-numeric:lining-nums tabular-nums}
+.up{color:var(--gain)}.down{color:var(--loss)}.gold{color:var(--gold)}
+.eyebrow{display:none}
+.hero-top .eyebrow{display:block;font-size:15px;letter-spacing:0;color:var(--muted)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+#content:focus{outline:none}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:11px 16px;border-radius:11px;border:1px solid transparent;font-size:14px;line-height:1.45;font-weight:600;white-space:nowrap}
+.primary{background:var(--gold);color:#151208}
+.primary:hover{background:#efc567}
+.secondary{background:transparent;color:var(--ink);border-color:var(--line)}
+.secondary:hover{background:var(--surface2)}
+.danger{background:#f871710d;color:var(--loss);border-color:#f8717138}
+.text-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;border:0;background:none;color:var(--gold);padding:8px 0;font-size:13px;white-space:nowrap}
+.text-button svg{width:16px;height:16px}
+.icon-button{display:grid;place-items:center;width:44px;min-height:44px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);padding:10px}
+.icon-button:hover{background:var(--surface2);color:var(--ink)}
+.brand{display:flex;align-items:center;gap:11px;font-size:16px;font-weight:600;line-height:1.3}
+.brand-light{font-weight:400;color:var(--ink)}
+.brand small{display:block;margin-top:5px;font-size:13px;color:var(--muted);font-weight:400;letter-spacing:.3px}
+.brand-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--gold);color:#151208;font:700 24px Georgia,serif;flex-shrink:0}
+.login-view{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--bg);position:relative}
+.login-card{width:100%;max-width:420px}
+.login-art,.login-bottom{display:none}
+.login-card h1{font-size:36px;line-height:1.5;margin-top:45px;letter-spacing:-.5px}
+.login-description{font-size:15px;line-height:1.9;color:var(--muted);margin:20px 0 28px}
+.login-card>.button{width:100%;margin-bottom:12px;min-height:48px}
+.login-footnote{font-size:13px;color:var(--muted);margin-top:12px}
+.pending-title{margin-top:28px}
+.form-error{font-size:14px;color:var(--loss);margin-top:12px;white-space:pre-line;overflow-wrap:anywhere}
+.app-shell{min-height:100dvh}
+.sidebar{position:fixed;inset:0 auto 0 0;z-index:20;width:220px;padding:32px 20px;background:var(--bg);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.sidebar .brand{font-size:14px}
+.sidebar .brand-mark{width:34px;height:34px;font-size:23px}
+.sidebar-caption{display:none}
+nav{display:flex;flex-direction:column;gap:7px;margin-top:38px}
+nav button{display:flex;align-items:center;gap:12px;min-height:48px;padding:12px 16px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:15px;text-align:left}
+nav svg{width:21px;height:21px}
+nav button.active{background:#e3b34c0d;color:var(--gold)}
+nav button:hover{background:var(--surface)}
+.sidebar-foot{margin-top:auto;padding:10px;font-size:13px;color:var(--muted)}
+.sidebar-foot small{display:block;font-size:13px;margin-top:6px;color:var(--muted)}
+.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gain);margin-right:7px}
+.workspace{margin-left:220px;padding:0 40px;max-width:1420px;min-width:0}
+.topbar{min-height:76px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}
+.breadcrumb,.local-date{font-size:13px;color:var(--muted)}
+.topbar-right{display:flex;align-items:center;gap:18px}
+.avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface2);color:var(--gold);font-size:14px}.avatar.has-photo{overflow:hidden;padding:0}.avatar-photo{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}.account-row .avatar{width:44px;height:44px;flex-shrink:0}
+.mobile-brand{display:none}
+.demo-banner{display:flex;justify-content:space-between;align-items:center;gap:12px;background:transparent;border:1px dashed var(--line);border-radius:10px;padding:9px 12px;margin-top:16px;color:var(--muted);font-size:13px}
+.demo-banner button{min-height:36px;background:none;border:0;color:var(--gold);font-size:13px;white-space:nowrap}
+main{padding:32px 0 48px;min-width:0}
+.page-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 16px;margin-bottom:24px}
+.page-heading>div:first-child{min-width:0}
+.page-heading p{grid-column:1/-1;font-size:14px;color:var(--muted);margin-top:0;line-height:1.65;max-width:72ch}
+.heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.page-footer{display:none}
+.card,.hero,.strategy-card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:28px;min-width:0}
+.card-header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
+.card-header>div{min-width:0}
+.card-header>svg{display:none}
+.hero{padding:30px 32px}
+.hero-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.badge{display:inline-flex;align-items:center;padding:4px 9px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:13px;white-space:nowrap;line-height:1.5}
+.badge.green{color:var(--gain);border-color:#4ade802b;background:transparent}
+.badge.gold{color:var(--gold);border-color:#e3b34c30;background:transparent}
+.badge.red{color:var(--loss);border-color:#f8717130}
+.hero-amount{display:flex;align-items:baseline;gap:10px;font-size:clamp(36px,3.4vw,48px);font-weight:600;letter-spacing:-1.1px;line-height:1.2;margin:20px 0 12px;min-width:0}
+.amount-value{min-width:0;overflow-wrap:anywhere}
+.hero-amount.long-amount{font-size:clamp(28px,2.8vw,38px)}
+.hero-amount .currency{font-size:17px;font-weight:400;color:var(--muted);margin-right:0;letter-spacing:0;flex-shrink:0}
+.hero-caption{font-size:14px;color:var(--muted)}
+.hero-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+.hero-pnl-label{font-size:14px;color:var(--muted);margin-bottom:5px}
+.hero-pnl{font-size:26px;font-weight:500;line-height:1.45;overflow-wrap:anywhere}
+.hero-pnl small{font-size:14px;margin-left:6px;display:inline-block}
+.hero-pnl-caption{font-size:13px;color:var(--muted);margin-top:4px;max-width:420px}
+.quote-state{text-align:right;font-size:13px;color:var(--muted)}
+.quote-state .text-button{display:flex;justify-content:flex-end;margin-left:auto;margin-top:3px}
+.overview-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px;align-items:stretch}
+.overview-grid>.hero{grid-column:1;grid-row:1}
+.home-grid{display:contents}
+.goal-card{grid-column:2;grid-row:1;display:flex;flex-direction:column}
+.goal-card .goal-foot{margin-top:auto;padding-top:20px}
+.goal-card .goal-detail{margin-bottom:24px}
+.trend-card{grid-column:1/-1;grid-row:2}
+.goal-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:20px}
+.goal-percent{font-size:38px;color:var(--gold);font-weight:600}
+.goal-percent small{font-size:16px}
+.progress{height:8px;border-radius:5px;background:var(--surface2);overflow:hidden}
+.progress>span{display:block;height:100%;background:var(--gold);border-radius:5px}
+.goal-detail{display:grid;grid-template-columns:1fr 1fr;gap:16px;color:var(--muted);font-size:14px;margin-top:20px}
+.goal-detail strong{display:block;color:var(--ink);font-size:22px;font-weight:600;margin-top:8px}
+.goal-detail>div:last-child{text-align:right}
+.goal-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;border-top:1px solid var(--line);margin-top:18px;padding-top:8px}
+.chart{width:100%;height:200px;overflow:visible}
+.chart-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-top:8px}
+.chart-empty{min-height:170px;display:grid;place-items:center;color:var(--muted);font-size:14px;text-align:center}
+.disclosure{margin-top:24px;padding:0}
+.disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;cursor:pointer;padding:22px 28px;font-size:16px;font-weight:600}
+.disclosure>summary::-webkit-details-marker{display:none}
+.disclosure>summary:after{content:"＋";font-size:20px;color:var(--muted);font-weight:400}
+.disclosure[open]>summary:after{content:"−"}
+.disclosure-body{padding:0 28px 28px}
+.analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;border-top:1px solid var(--line);padding-top:20px}
+.analysis-grid h2{margin-bottom:18px}
+.allocation{display:flex;align-items:center;gap:24px}
+.donut{position:relative;flex-shrink:0;width:110px;height:110px;border-radius:50%}
+.donut:before{content:"";position:absolute;inset:16px;background:var(--surface);border-radius:50%}
+.donut-label{position:absolute;inset:0;display:grid;place-content:center;text-align:center;font-size:24px}
+.donut-label small{font-size:13px;color:var(--muted)}
+.legend{flex:1;min-width:0}
+.legend-row{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px}
+.legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.legend-row .percent{margin-left:auto;font-size:13px}
+.rates-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:18px 0}
+.rate-box{padding:13px 10px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;min-width:0}
+.rate-box .label{font-size:13px;color:var(--muted)}
+.rate-box .value{font-size:22px;font-weight:600;margin-top:7px;overflow-wrap:anywhere}
+.rate-note{font-size:14px;color:var(--muted);line-height:1.9}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.search-field{position:relative;flex:1;min-width:0}
+.search-field svg{position:absolute;left:13px;top:15px;width:18px;height:18px;color:var(--muted)}
+.search-field input{padding-left:40px}
+.toolbar input,.toolbar select,.friend-select{margin-top:0}
+.toolbar select{width:auto;max-width:180px;font-size:13px}
+.table-wrap{max-width:100%;overflow-x:auto}
+.asset-table{width:100%;border-collapse:collapse}
+.asset-table th{font-size:13px;color:var(--muted);font-weight:400;padding:0 10px 16px;text-align:right;white-space:nowrap}
+.asset-table th:first-child{text-align:left;padding-left:0}
+.asset-table td{padding:24px 12px;border-top:1px solid var(--line);text-align:right;vertical-align:middle;font-size:14px}
+.asset-table td:first-child{text-align:left;padding-left:0}
+.asset-table td.action-cell{padding-right:0;width:96px}
+.asset-name{display:flex;align-items:flex-start;gap:12px}
+.asset-name>div:last-child{min-width:0}
+.asset-icon{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;border-radius:11px;background:color-mix(in srgb,var(--asset-accent) 12%,var(--surface2));border:1px solid color-mix(in srgb,var(--asset-accent) 42%,var(--line));color:var(--asset-accent);font-size:17px;font-weight:700;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--asset-accent) 12%,transparent)}.asset-icon.manual{--asset-accent:var(--gold)}
+.asset-title{font-size:16px;font-weight:600;overflow-wrap:anywhere}
+.asset-sub{font-size:13px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
+.asset-quote{font-size:13px;color:var(--muted);margin-top:5px;max-width:260px;overflow-wrap:anywhere}
+.asset-table .money{font-size:19px;font-weight:600;white-space:nowrap}
+.asset-table .pnl-percent{font-size:14px;margin-top:6px}
+.asset-table .pnl-percent small{display:inline-block;font-size:13px}
+.table-actions{display:flex;justify-content:flex-end;gap:7px}
+.table-actions svg{width:16px;height:16px}
+.table-note{font-size:14px;color:var(--muted);line-height:1.9;border-top:1px solid var(--line);padding-top:18px;margin-top:8px}
+.empty-state{text-align:center;padding:34px 12px}
+.empty-icon{width:48px;height:48px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;color:var(--gold);margin:0 auto 16px}
+.empty-icon svg{width:22px;height:22px}
+.empty-state p{font-size:14px;color:var(--muted);margin:9px 0 20px;line-height:1.9}
+.sharing-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+.segment{display:flex;gap:4px;background:transparent;border:1px solid var(--line);padding:4px;border-radius:11px;max-width:100%}
+.segment button{min-height:42px;border:0;border-radius:7px;background:transparent;color:var(--muted);padding:9px 16px;font-size:14px;white-space:nowrap}
+.segment button.active{background:var(--surface2);color:var(--gold)}
+.friend-select{width:auto;max-width:250px;font-size:14px}
+.share-note{display:flex;align-items:flex-start;gap:10px;padding:0 0 20px;color:var(--muted);font-size:13px;line-height:1.9}
+.share-note svg{width:18px;height:18px;color:var(--gold);margin-top:3px}
+.share-grid,.strategy-grid,.settings-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
+.share-grid .full,.settings-grid .full{grid-column:1/-1}
+.checkbox-row{display:flex;align-items:center;gap:12px;padding:15px 0;margin:0;font-size:14px;color:var(--ink);cursor:pointer;min-height:48px}
+.checkbox-row input{width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--gold)}
+.checkbox-row input[type=checkbox]{appearance:none;-webkit-appearance:none;width:22px;height:22px;min-width:22px;min-height:22px;border:1.5px solid #718078;border-radius:7px;background:var(--surface2);display:grid;place-content:center;cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+.checkbox-row input[type=checkbox]::after{content:"";width:5px;height:10px;border:solid transparent;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.checkbox-row input[type=checkbox]:checked{border-color:var(--gold);background:#26342b;box-shadow:0 0 0 2px #e3b34c1a}
+.checkbox-row input[type=checkbox]:checked::after{border-color:var(--gold)}
+.checkbox-row input[type=checkbox]:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.share-asset-choice{border-bottom:1px solid var(--line)}
+.share-asset-choice:last-child{border-bottom:0}
+.share-asset-choice>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
+.share-asset-choice .amount{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+.contact{padding:14px 0;border-bottom:1px solid var(--line)}
+.contact:last-child{border-bottom:0}
+.contact-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.contact-name{font-size:14px;overflow-wrap:anywhere;min-width:0}
+.contact-choices{display:flex;gap:24px;margin-top:5px}
+.contact-choices .checkbox-row{font-size:13px;padding:9px 0}
+.publish-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px}
+.invite-form{display:flex;align-items:flex-end;gap:10px;margin-top:16px}
+.invite-form input{font-size:14px;margin-top:0;min-width:0}
+.invite-form .button{white-space:nowrap;flex-shrink:0}
+.invite-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);font-size:14px}
+.invite-item>div{min-width:0;overflow-wrap:anywhere}
+.strategy-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.strategy-symbol{font-size:14px;font-weight:600;color:var(--gold);overflow-wrap:anywhere}
+.strategy-card h2{font-size:22px;line-height:1.5;margin-top:20px;overflow-wrap:anywhere}
+.strategy-card .thesis{font-size:16px;color:var(--ink);line-height:1.9;margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.strategy-info{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.strategy-info>div{margin-bottom:22px}
+.strategy-info dt{font-size:14px;font-weight:600;color:var(--muted);margin-bottom:8px}
+.strategy-info dd{font-size:16px;line-height:1.9;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.strategy-bottom{border-top:1px solid var(--line);padding-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;font-size:13px;color:var(--muted)}
+.strategy-bottom .text-button{font-size:13px}
+.account-row{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.account-row .avatar{width:44px;height:44px;flex-shrink:0}
+.account-row p{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.settings-buttons{display:flex;gap:10px;flex-wrap:wrap}
+.settings-grid form>.button{margin-top:22px}
+.admin-panel{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.admin-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.admin-loading{padding:12px 0}
+.admin-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 0;border-bottom:1px solid var(--line);font-size:14px}
+.admin-row .small{overflow-wrap:anywhere}
+.admin-actions{display:flex;gap:8px;flex-shrink:0}
+.history-table{width:100%;border-collapse:collapse;font-size:14px}
+.history-table td,.history-table th{text-align:right;padding:16px 0;border-bottom:1px solid var(--line)}
+.history-table th{font-size:13px;color:var(--muted);font-weight:400}
+.history-table td:first-child,.history-table th:first-child{text-align:left}
+.history-table td{font-variant-numeric:lining-nums tabular-nums}
+.pagination{text-align:center;margin-top:16px}
+label{display:block;font-size:15px;color:var(--muted);margin-top:16px}
+input,select,textarea{display:block;width:100%;min-width:0;max-width:100%;background:var(--surface2);border:1px solid var(--line);color:var(--ink);padding:12px 13px;border-radius:10px;margin-top:8px;font-size:16px;line-height:1.4;min-height:46px}
+input::placeholder,textarea::placeholder{color:#849087}
+input[type=checkbox]{display:inline-block;min-height:0}
+input[type=date]{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:48px;-webkit-appearance:none;appearance:none;padding-inline:12px}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+#goalForm,#goalForm label{width:100%;min-width:0;max-width:100%}
+#goalForm input{box-sizing:border-box;min-width:0;max-width:100%}
+input[type=number]::-webkit-inner-spin-button{appearance:none}
+textarea{resize:vertical;line-height:1.8}
+form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:none}
+.modal{background:var(--surface);border:1px solid #3f4b44;border-radius:18px;color:var(--ink);width:min(560px,calc(100vw - 28px));max-height:90dvh;padding:30px;margin:auto;overflow-y:auto;box-shadow:0 20px 70px #0005}
+.modal::backdrop{background:#050a07bd}
+.modal-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+.modal-heading .icon-button{position:relative;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;flex:0 0 44px;line-height:1;color:var(--muted);border-color:transparent;background:transparent;outline:none;box-shadow:none}
+.modal-heading .icon-button::before{content:"";position:absolute;inset:5px;border:1px solid var(--line);border-radius:9px;pointer-events:none;transition:background-color .15s,border-color .15s}
+.modal-heading .icon-button:hover::before{background:var(--surface2);border-color:#46554c}
+.modal-heading .icon-button svg{display:block;width:17px;height:17px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;fill:none}
+.modal-heading .icon-button:focus-visible{outline:none;box-shadow:none}
+.modal-heading .icon-button:focus-visible::before{border-color:#718078;box-shadow:0 0 0 1px var(--surface)}
+.form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:14px}
+.callout{padding:16px;background:var(--surface2);border-radius:10px;font-size:14px;line-height:1.9;color:var(--muted);margin-top:18px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
+.modal-actions .button{min-width:100px}
+.small-modal{max-width:400px}
+.small-modal p{font-size:14px;margin-top:16px;line-height:1.9}
+.toast{position:fixed;left:calc(50% + 110px);bottom:28px;transform:translate(-50%,8px);opacity:0;pointer-events:none;z-index:100;background:var(--ink);color:#151d18;padding:13px 18px;border-radius:12px;max-width:min(600px,90vw);box-shadow:0 10px 35px #0004;font-size:14px;white-space:pre-line;transition:.18s}
+.toast.visible{transform:translate(-50%,0);opacity:1}
+.toast.error{background:#f3c5c0;color:#391c18}
+.saving .status-dot{background:var(--gold)}
+.install-steps{margin:16px 0 0;padding-left:22px;color:var(--ink);font-size:14px}
+.install-steps li{padding:5px 0}
+@media(min-width:1550px){.workspace{margin-left:auto;margin-right:auto;padding-left:260px;max-width:1420px}}
+@media(max-width:1150px) and (min-width:901px){.workspace{padding:0 24px}.share-grid,.strategy-grid,.settings-grid{grid-template-columns:1fr}.share-grid .full,.settings-grid .full{grid-column:auto}.overview-grid{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px}.asset-table .price-col{display:none}.analysis-grid{grid-template-columns:1fr;gap:24px}}
+@media(max-width:900px){
+  body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}
+  .sidebar{inset:auto 0 0;width:auto;padding:0;border-right:0;border-top:1px solid var(--line);background:#101614;display:block}
+  .sidebar>.brand,.sidebar-caption,.sidebar-foot{display:none}
+  nav{margin:0;flex-direction:row;gap:0;padding:7px max(7px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(7px,env(safe-area-inset-left))}
+  nav button{flex:1;min-width:0;min-height:62px;flex-direction:column;justify-content:center;gap:4px;text-align:center;padding:8px 0;font-size:13px;border-radius:9px}
+  nav svg{width:22px;height:22px}
+  nav button.active{background:transparent}
+  nav button.active:before{display:none}
+  .workspace{margin-left:0;padding:0 max(18px,env(safe-area-inset-left)) 0 max(18px,env(safe-area-inset-right));max-width:760px;margin-right:auto;margin-left:auto}
+  .topbar{min-height:calc(68px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);gap:10px}
+  .breadcrumb,.local-date{display:none}
+  .mobile-brand{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600}
+  .mobile-brand .brand-mark{width:30px;height:32px;font-size:21px;border-radius:9px}
+  .topbar-right{gap:8px}
+  .avatar{width:36px;height:36px}
+  main{padding-top:24px}
+  .page-heading{align-items:center;margin-bottom:20px;gap:7px 12px}
+  h1{font-size:27px}
+  .page-heading p{display:block;font-size:14px;line-height:1.65;margin-top:0;max-width:none}
+  .heading-actions{gap:8px}
+  .heading-actions .button{font-size:13px;padding:10px 12px}
+  .overview-grid{display:flex;flex-direction:column;gap:18px}
+  .overview-grid>.hero{order:0}
+  .goal-card{order:1}.trend-card{order:2}
+  .card,.hero,.strategy-card{padding:24px;border-radius:17px}
+  .hero{padding:26px 24px}
+  .hero-amount{font-size:clamp(32px,9vw,40px);letter-spacing:-.8px;margin-top:20px;gap:8px}
+  .hero-amount.long-amount{font-size:clamp(26px,7.5vw,34px)}
+  .hero-amount .currency{font-size:14px;margin-right:0}
+  .hero-caption{font-size:14px}
+  .hero-bottom{margin-top:20px;padding-top:18px;gap:14px}
+  .hero-pnl{font-size:22px}
+  .quote-state{font-size:13px}
+  .badge{font-size:13px}
+  .chart{height:180px}
+  .analysis-grid{grid-template-columns:1fr;gap:26px}
+  .disclosure{padding:0;margin-top:14px}
+  .disclosure>summary{padding:18px 22px;font-size:14px}
+  .disclosure-body{padding:0 22px 22px}
+  .share-grid,.strategy-grid,.settings-grid{grid-template-columns:1fr;gap:18px}
+  .share-grid .full,.settings-grid .full{grid-column:auto}
+  .sharing-top{align-items:stretch;flex-direction:column;gap:12px}
+  .segment{width:100%}
+  .segment button{flex:1;min-width:0;padding:9px 8px;font-size:13px}
+  .friend-select{width:100%;max-width:none}
+  .admin-heading{align-items:flex-start;flex-direction:column}
+  .admin-row{align-items:flex-start;flex-direction:column}
+  .admin-actions{width:100%}
+  .admin-actions .button{flex:1}
+  .publish-row{flex-direction:column;align-items:stretch;gap:12px}
+  .publish-row .button{width:100%}
+  .toolbar{flex-wrap:wrap;gap:8px}
+  .search-field{flex-basis:100%}
+  .toolbar select{flex:1;max-width:none;min-width:0;font-size:14px}
+  .asset-table,.asset-table tbody{display:block;width:100%}
+  .asset-table thead{display:none}
+  .asset-table tr{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:0 12px;border-top:1px solid var(--line);padding:24px 0}
+  .asset-table td{display:block;border:0;padding:0;text-align:left;width:auto}
+  .asset-table td:first-child{grid-column:1;grid-row:1}
+  .asset-table .qty-col,.asset-table .price-col{display:none}
+  .asset-table td.value-cell{grid-column:1;grid-row:2;padding:16px 0 0 50px}
+  .asset-table td.action-cell{grid-column:2;grid-row:1/3;width:44px;align-self:center;padding:0}
+  .asset-table .money{font-size:21px;white-space:normal;overflow-wrap:anywhere}
+  .asset-table .pnl-percent{font-size:14px}
+  .asset-table .pnl-percent small{font-size:13px}
+  .asset-name{gap:12px}
+  .asset-title{font-size:16px}
+  .asset-sub{font-size:13px}
+  .asset-quote{font-size:13px}
+  .table-actions{flex-direction:column;gap:6px}
+  .table-actions button{width:44px;min-height:44px}
+  .table-note{font-size:14px}
+  .strategy-card h2{font-size:21px}
+  .strategy-bottom{align-items:flex-start;flex-wrap:wrap}
+  .history-table{font-size:14px;table-layout:fixed}
+  .history-table td{overflow-wrap:anywhere}
+  .history-table th{font-size:13px}
+  .history-table td:last-child{font-size:13px}
+  .modal{padding:26px 22px;max-height:88dvh}
+  .modal-actions .button{flex:1}
+  .toast{left:50%;bottom:calc(98px + env(safe-area-inset-bottom));font-size:14px}
+  .login-view{padding:calc(38px + env(safe-area-inset-top)) 25px calc(38px + env(safe-area-inset-bottom))}
+  .login-card h1{font-size:33px}
+  .demo-banner{padding:9px 11px;font-size:13px;align-items:flex-start}
+  .demo-banner button{font-size:13px}
+  .desktop-only{display:none}
+  .admin-row{align-items:flex-start}.admin-actions{flex-direction:column}
+}
+@media(max-width:370px){
+  .workspace{padding-left:14px;padding-right:14px}
+  .card,.hero,.strategy-card{padding:19px}
+  h1{font-size:25px}.heading-actions .button{padding:10px;font-size:14px}
+  .hero-amount{font-size:32px}.hero-amount.long-amount{font-size:26px}.hero-pnl{font-size:22px}
+  .hero-pnl small{font-size:13px}.quote-state{text-align:left;width:100%}
+  .quote-state .text-button{justify-content:flex-start;margin-left:0}
+  .form-grid{grid-template-columns:1fr;gap:0}
+  .asset-table td.value-cell{padding-left:0}
+  .share-asset-choice{flex-wrap:wrap;gap:8px}.share-asset-choice .amount{font-size:13px}
+  .invite-form{flex-wrap:wrap}.invite-form .button{width:100%}
+  .rate-box .value{font-size:19px}
+  .disclosure{padding:0}.disclosure>summary{padding:17px 19px}.disclosure-body{padding:0 19px 19px}
+}
+@media(display-mode:standalone){body{overscroll-behavior-y:none}button,nav{-webkit-user-select:none;user-select:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+
+
+@media(max-width:900px){.asset-table.readonly tr{grid-template-columns:minmax(0,1fr)}}
+
+/* Long prose stays readable; figures use aligned numerals. */
+.strategy-card .thesis,.strategy-info dd{max-width:60ch}
+.share-note{font-size:14px;max-width:82ch}
+.history-table td:nth-child(2){font-weight:600}
+@media(min-width:901px){.trend-card .chart{height:210px}.hero-bottom{align-items:flex-start;gap:12px}.hero-bottom>div:first-child{flex:1;min-width:0}.quote-state{max-width:185px}.goal-foot{flex-wrap:wrap}.hero-pnl small{display:block;margin:2px 0 0}}
+@media(max-width:600px){.page-heading{gap:7px 12px}.heading-actions{justify-content:flex-end;width:auto}.heading-actions .button{font-size:14px}.hero-top{align-items:flex-start}.hero-top .badge{white-space:normal;text-align:right}.hero-bottom{align-items:flex-start}.quote-state{width:100%;text-align:left;border-top:1px solid var(--line);padding-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}.quote-state .text-button{margin:0;font-size:14px;flex-shrink:0}.goal-detail strong{font-size:21px}.asset-icon{width:34px;height:34px;font-size:11px}.asset-name{gap:10px}.asset-table td.value-cell{padding-left:44px}.asset-quote{font-size:13px;line-height:1.65}.strategy-bottom{gap:16px}.strategy-bottom>div{display:flex;gap:16px;align-items:center}.strategy-bottom .text-button{font-size:14px}.strategy-bottom .text-button:last-child{margin-left:0!important}.contact-choices{gap:28px}.disclosure>summary{font-size:16px}.rate-note,.table-note{font-size:14px}}
+@media(max-width:370px){.asset-table td.value-cell{padding-left:0}.hero-top{flex-wrap:wrap}.quote-state{flex-wrap:wrap}.goal-detail strong{font-size:19px}}
+
+/* Shared page headings: title and actions, followed by one quiet summary row. */
+.heading-title{min-width:0}
+.page-heading h1{overflow-wrap:anywhere}
+.heading-actions:empty{display:none}
+.history-count{text-align:right;font-size:13px}
+@media(max-width:900px){
+  .page-heading h1{font-size:26px;line-height:1.35}
+  .heading-actions{flex-wrap:nowrap}
+  .heading-actions .button{min-height:44px;font-size:14px;padding:10px 12px}
+  .heading-actions .refresh-button{width:44px;min-width:44px;padding:10px}
+  .heading-actions .refresh-button span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .card-header{align-items:flex-start;flex-wrap:wrap;gap:8px 12px}
+  .card-header .small{margin-left:auto;max-width:100%;overflow-wrap:anywhere}
+}
+@media(max-width:600px){
+  .form-grid.values-grid{grid-template-columns:minmax(0,1fr);gap:0}
+  #strategyForm .form-grid{grid-template-columns:minmax(0,1fr);gap:0}
+  .modal{width:calc(100vw - 24px);padding:24px 20px}
+  .modal-heading{margin-bottom:12px}
+  .modal label{line-height:1.6;margin-top:18px}
+  .modal input,.modal select{margin-top:7px}
+  .modal-actions{position:sticky;bottom:-24px;background:var(--surface);padding:16px 0 24px;margin-top:20px;border-top:1px solid var(--line);z-index:2}
+}
+@media(max-width:370px){.page-heading h1{font-size:23px}.page-heading{column-gap:8px}.heading-actions{gap:6px}.heading-actions .button{padding:10px}.heading-actions .refresh-button{padding:10px}}
+
+/* Place actions with the content they change. */
+.card-action{min-height:44px;padding:10px 13px;font-size:14px;border-radius:10px;color:var(--gold);font-weight:500}
+.card-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.holdings-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}
+.holdings-actions h2{font-size:18px}
+.card-actions .refresh-button{width:auto;min-width:44px;padding:10px 13px;position:relative;gap:7px;white-space:nowrap}
+.card-actions .refresh-button span{position:static;width:auto;height:auto;padding:0;margin:0;overflow:visible;clip-path:none;white-space:nowrap}
+.hero-top{min-height:44px}.hero-top .eyebrow{font-size:15px;color:var(--ink);font-weight:500}
+.quote-warning{font-size:13px;color:var(--gold);margin-top:8px}
+.record-actions{align-items:center;flex-wrap:nowrap;margin-bottom:12px}
+.record-actions h2{font-size:18px}
+.chart-current{margin-bottom:18px}
+.history-archive{border-top:1px solid var(--line);margin-top:20px;padding-top:4px}
+.history-archive>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:12px 0;cursor:pointer;list-style:none;font-size:14px;color:var(--ink)}
+.history-archive>summary::-webkit-details-marker{display:none}
+.history-archive summary small{font-size:13px;color:var(--muted);margin-left:7px}
+.archive-expand,.archive-collapse{color:var(--gold);font-size:13px}
+.archive-collapse{display:none}.history-archive[open] .archive-expand{display:none}.history-archive[open] .archive-collapse{display:inline}
+.archive-content{padding-top:12px}
+.archive-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px}
+.archive-pagination .button{font-size:14px;padding:9px 12px}
+.archive-pagination button:disabled{cursor:default;opacity:.35}
+@media(max-width:600px){
+  .page-heading{margin-bottom:18px;gap:5px 12px}
+  .page-heading h1{font-size:26px}
+  .card,.hero,.strategy-card{padding:22px}
+  .disclosure{padding:0}
+  .holdings-actions{margin-bottom:18px;gap:10px}
+  .card-action{font-size:14px;padding:10px 12px;white-space:nowrap}
+  .card-actions{gap:7px}
+  .hero-top{align-items:center}
+  .history-table{min-width:0}
+  .history-table th:nth-child(1){width:31%}.history-table th:nth-child(2){width:40%}.history-table th:nth-child(3){width:29%}
+}
+@media(max-width:370px){.holdings-actions h2,.record-actions h2{font-size:16px}.card-action{padding:10px;font-size:13px}.card-actions{gap:6px}.card,.hero,.strategy-card{padding:19px}.disclosure{padding:0}}
+
+/* Keep the overview's primary amount distinct from supporting information. */
+.wealth-summary{display:flex;flex-direction:column;padding:28px;overflow:hidden}
+.summary-heading{display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:500}
+.summary-currency{font-size:12px;font-weight:400;color:var(--muted);white-space:nowrap}
+.summary-amount{text-align:center;font-size:clamp(38px,3.8vw,52px);font-weight:650;letter-spacing:-1.3px;line-height:1.15;margin-top:22px;overflow-wrap:anywhere}
+.summary-amount.long-amount{font-size:clamp(28px,2.7vw,38px);letter-spacing:-.6px}
+.summary-holdings{text-align:center;font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6}
+.summary-return{margin:20px 0;padding:0;border:0;border-radius:0;background:none;text-align:center}
+.summary-return-label{font-size:13px;color:var(--muted);margin-bottom:7px}
+.summary-pnl{font-size:25px;font-weight:500;line-height:1.3;overflow-wrap:anywhere}
+.summary-pnl>span{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:7px 10px;min-width:0}
+.summary-pnl small{display:inline-block;font-size:13px;font-weight:400;padding:0;border:0;border-radius:0;background:none;line-height:1.3;white-space:nowrap}
+.summary-pnl>.muted{font-size:16px;line-height:1.6}
+.summary-method{margin-top:9px;font-size:12px;color:var(--muted)}
+.summary-method>summary{display:flex;align-items:center;gap:5px;min-height:32px;cursor:pointer;list-style:none;width:fit-content;margin-inline:auto}
+.summary-method>summary::-webkit-details-marker{display:none}
+.summary-method svg{width:12px;height:12px;transform:rotate(90deg)}
+.summary-method[open] svg{transform:rotate(270deg)}
+.summary-method p{padding-top:4px;line-height:1.8;overflow-wrap:anywhere}
+.summary-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding-top:18px;margin-top:auto}
+.summary-updated{display:flex;flex-direction:column;gap:2px;color:var(--muted);font-size:12px;min-width:0;line-height:1.6}
+.summary-updated>.mono{color:var(--ink);font-size:13px}
+.summary-refresh{font-size:13px;font-weight:500;color:var(--gold);padding:9px 12px;flex-shrink:0}
+@media(max-width:900px){
+  .wealth-summary{padding:24px}
+  .summary-amount{text-align:center;font-size:clamp(34px,10.5vw,44px);letter-spacing:-1px;margin-top:20px}
+  .summary-amount.long-amount{font-size:clamp(24px,7vw,32px)}
+  .summary-return{margin-top:18px;padding:0}
+  .summary-pnl{font-size:23px}
+}
+@media(max-width:370px){
+  .wealth-summary{padding:20px}
+  .summary-heading{gap:8px}
+  .summary-currency{font-size:11px}
+  .summary-return{padding:0}
+  .summary-pnl{font-size:21px}
+  .summary-refresh{padding:9px 10px}
+}
+/* Strategy review draft: all additions are scoped to sr-*; existing styles are untouched. */
+.sr-panel{border-top:1px solid var(--line);padding-top:18px;margin-top:20px;min-width:0}
+.sr-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.sr-heading h3{font-size:15px;font-weight:500;margin:0}
+.sr-counts{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:12px 0 8px}
+.sr-note{font-size:12px;color:var(--muted);line-height:1.8;margin-top:8px;overflow-wrap:anywhere}
+.sr-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.sr-actions .button{font-size:13px;padding:9px 13px;min-height:40px}
+.sr-voters{list-style:none;padding:0;margin:14px 0 0}
+.sr-voter{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sr-voter-person{display:flex;align-items:center;gap:9px;min-width:0;overflow-wrap:anywhere}
+.sr-avatar{display:inline-grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:50%;overflow:hidden;border:1px solid var(--line);background:var(--surface2);color:var(--gold);font-size:12px}
+.sr-avatar img{display:block;width:100%;height:100%;object-fit:cover}
+.sr-voter:last-child{border-bottom:0}
+.sr-voter small{grid-column:1/-1;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.7}
+.sr-demo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:12px}
+.sr-demo select{width:auto;min-width:0;max-width:100%;padding:8px 10px;font-size:12px}
+.sr-dialog{width:min(480px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto}
+.sr-dialog-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}
+.sr-dialog-heading h2{font-size:20px;margin:0}
+.sr-dialog fieldset{border:0;padding:0;margin:0 0 18px;min-width:0}
+.sr-dialog legend{font-size:14px;margin-bottom:8px;color:var(--muted)}
+.sr-dialog .checkbox-row{font-size:14px;padding:10px 0;overflow-wrap:anywhere}
+.sr-dialog input[type=datetime-local]{box-sizing:border-box;width:100%;max-width:100%;min-width:0}
+.sr-dialog .sr-actions .button{flex:1}
+.sr-dialog .sr-error{color:var(--down);font-size:13px;line-height:1.6;min-height:20px}
+.sr-history{margin-top:12px;font-size:12px;color:var(--muted)}
+.sr-history summary{cursor:pointer;padding:8px 0}
+.sr-round{padding:10px 0;border-top:1px solid var(--line)}
+.sr-round p{margin:4px 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.sr-teacher{border-top:1px solid var(--line);margin-top:16px;padding-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.sr-teacher .sr-actions{flex-basis:100%;margin-top:2px}
+.sr-teacher-result{font-size:12px;color:var(--muted);line-height:1.7;margin:12px 0 0;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+  <section id="loginView" class="login-view">
+    <div class="login-art" aria-hidden="true"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="art-grid"></div><svg viewBox="0 0 600 400"><path d="M0 340 C50 330 65 350 105 300 S160 330 210 250 S270 280 325 210 S390 230 435 150 S520 175 600 50" fill="none" stroke="#dbb76b" stroke-width="2"/><path d="M0 340 C50 330 65 350 105 300 S160 330 210 250 S270 280 325 210 S390 230 435 150 S520 175 600 50 L600 400 L0 400Z" fill="url(#fill)"/><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#dbb76b" stop-opacity=".15"/><stop offset="1" stop-color="#dbb76b" stop-opacity="0"/></linearGradient></defs></svg></div>
+    <div class="login-card">
+      <div class="brand"><span class="brand-mark">W</span><span>Wealth<span class="brand-light"> Tracker</span><small>資產管理</small></span></div>
+      <div class="eyebrow login-kicker">YOUR WEALTH, IN FOCUS</div>
+      <h1>你的資產，<br>清楚掌握。</h1>
+      <p class="login-description">整理持倉、追蹤目標，與信任的人<br class="desktop-only">分享部位和交易想法。</p>
+      <button id="loginButton" class="button primary" disabled>正在連線…</button>
+      <button id="demoButton" class="button secondary">先看看新版介面 <span aria-hidden="true">↗</span></button>
+      <p class="login-footnote">Google 帳號登入 · 支援加入手機主畫面</p>
+      <p id="loginError" class="form-error" role="alert"></p>
+    </div>
+    <div class="login-bottom">WEALTH TRACKER <span>用清楚的紀錄，累積長期的進步。</span></div>
+  </section>
+
+  <section id="pendingView" class="login-view hidden"><div class="login-card"><span class="brand-mark">W</span><h1 class="pending-title">等待使用授權</h1><p id="pendingMessage" class="login-description"></p><button class="button primary" data-action="recheck">重新檢查</button><button class="button secondary" data-action="logout">登出</button></div></section>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar"><a class="brand" href="#home"><span class="brand-mark">W</span><span>Wealth<span class="brand-light"> Tracker</span><small>資產管理</small></span></a><div class="sidebar-caption">把今天的紀錄，<br>變成明天的方向。</div><nav id="navigation" aria-label="主要導覽"></nav><div class="sidebar-foot"><span class="status-dot"></span><span id="sidebarStatus">雲端同步</span><small>VERSION 2.4.11</small></div></aside>
+    <div class="workspace">
+      <header class="topbar"><div class="mobile-brand"><span class="brand-mark">W</span><span>Wealth Tracker</span></div><div class="breadcrumb" id="breadcrumb">我的資產 / 總覽</div><div class="topbar-right"><span class="local-date" id="localDate"></span><button class="avatar" id="userAvatar" data-action="account" aria-label="帳號與設定"></button></div></header>
+      <div id="demoBanner" class="demo-banner hidden"><span>示範資料，未連接你的帳號</span><button data-action="exit-demo">返回登入 ↗</button></div>
+      <main id="content" tabindex="-1"></main>
+      <footer class="page-footer"><span>WEALTH TRACKER</span><span>持倉有紀錄，決策有依據。</span></footer>
+    </div>
+  </div>
+
+  <dialog id="assetDialog" class="modal"><form id="assetForm" novalidate>
+    <div class="modal-heading"><div><div class="eyebrow">MY PORTFOLIO</div><h2 id="assetDialogTitle">新增持倉</h2></div><button type="button" class="icon-button" data-close="assetDialog" aria-label="關閉"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <label>更新方式<select name="mode"><option value="stock">美股個股</option><option value="crypto">加密貨幣</option><option value="tw">台股／ETF</option><option value="usd">美元現金／帳戶</option><option value="manual">手動資產</option></select></label>
+    <div class="form-grid"><label>名稱<input name="name" maxlength="80" placeholder="留空使用代號"></label><label id="symbolField">代號<input name="symbol" placeholder="例如 AAPL" maxlength="80" autocapitalize="characters" autocomplete="off"></label></div>
+    <div class="form-grid values-grid"><label id="quantityField"><span id="quantityLabel">持有股數</span><input name="qty" type="number" min="0" step="any" inputmode="decimal" placeholder="例如 28"></label><label id="valueField" class="hidden">目前價值（台幣）<input name="value" type="number" min="0" step="any" inputmode="decimal"></label><label id="nativeCostField"><span id="nativeCostLabel">平均買入價（USD／股）</span><input name="costPer" type="number" min="0" step="any" inputmode="decimal" placeholder="選填"></label><label id="manualCostField" class="hidden">本金（台幣）<input name="cost" type="number" min="0" step="any" inputmode="decimal" placeholder="選填"></label></div>
+    <label id="costFxField">買入時匯率（USD／TWD）<input name="costFx" type="number" min="0" step="any" inputmode="decimal" placeholder="例如 32.5；留空顯示價差損益"></label>
+    <label id="typeField" class="hidden">類別<select name="type"><option>現金</option><option>其他</option><option>加密貨幣</option><option>台股</option><option>美股</option></select></label>
+    <label id="summaryField" class="hidden">美元資產性質<select name="summary"><option value="no">美元現金（計入總資產）</option><option value="yes">帳戶總值（參考，不重複加總）</option></select></label>
+    <p class="callout" id="assetModeHint"></p><p class="form-error" id="assetError" role="alert"></p>
+    <div class="modal-actions"><button type="button" class="button secondary" data-close="assetDialog">取消</button><button type="submit" class="button primary">儲存持倉</button></div>
+  </form></dialog>
+
+  <dialog id="strategyDialog" class="modal"><form id="strategyForm" novalidate>
+    <div class="modal-heading"><div><div class="eyebrow">TRADE WITH A PLAN</div><h2 id="strategyDialogTitle">新增交易策略</h2></div><button type="button" class="icon-button" data-close="strategyDialog" aria-label="關閉"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <label>策略名稱<input name="title" maxlength="100" placeholder="例如：分批布局指數 ETF" required></label>
+    <input type="hidden" name="term" value="long">
+    <label>標的<input name="symbol" maxlength="80" placeholder="例如 0050 / BTC" required></label>
+    <label>交易理由<textarea name="thesis" rows="3" maxlength="4000" placeholder="這筆交易的依據是什麼？" required></textarea></label>
+    <label>進場條件<textarea name="entry" rows="2" maxlength="1500" placeholder="出現什麼條件才執行？"></textarea></label>
+    <label>失效／退出條件<textarea name="invalidation" rows="2" maxlength="1500" placeholder="什麼情況代表原判斷失效？"></textarea></label>
+    <div class="form-grid"><label>目標／預期持有時間<input name="target" maxlength="200" placeholder="選填"></label><label>執行狀態<select name="status"><option value="watching">觀察中</option><option value="active">執行中</option><option value="closed">已結束</option></select></label></div>
+    <label class="checkbox-row"><input name="published" type="checkbox"><span>分享給「策略」授權名單中的朋友</span></label><p class="muted small">未勾選即為私人草稿；持倉與策略使用不同的授權名單。</p><p class="form-error" id="strategyError" role="alert"></p>
+    <div class="modal-actions"><button type="button" class="button secondary" data-close="strategyDialog">取消</button><button type="submit" class="button primary">儲存策略</button></div>
+  </form></dialog>
+
+  <dialog id="confirmDialog" class="modal small-modal"><h2 id="confirmTitle">確認操作</h2><p id="confirmText" class="muted"></p><div class="modal-actions"><button class="button secondary" data-close="confirmDialog">取消</button><button id="confirmAction" class="button danger">確認</button></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="reviewDialog" class="modal sr-dialog"><div class="modal-heading sr-dialog-heading"><h2 id="reviewDialogTitle">策略審核</h2><button type="button" class="icon-button" data-close="reviewDialog" aria-label="關閉審核視窗"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button></div><div id="reviewDialogBody"></div><p id="reviewError" class="sr-error" role="alert"></p></dialog>
+  <script>// Additive strategy vote and teacher-decision policy. Existing strategy content and status remain unchanged.
+function reviewState(round,post,viewers,now=Date.now()){
+  if(!round?.roundId)return {state:'none',agree:0,reject:0,pending:0,total:0};
+  const voters=round.voterUids||[],choices=round.choices||{};
+  const agree=voters.filter(uid=>choices[uid]==='agree').length,reject=voters.filter(uid=>choices[uid]==='reject').length;
+  const counts={agree,reject,pending:voters.length-agree-reject,total:voters.length};
+  if(!post?.published)return {...counts,state:'private'};
+  if(round.strategyUpdatedAt!==post.updatedAt)return {...counts,state:'changed'};
+  if(!voters.length||voters.some(uid=>!viewers.includes(uid)))return {...counts,state:'revoked'};
+  if(round.adoptedMs)return {...counts,state:'adopted'};
+  if(now>=round.deadlineMs)return {...counts,state:agree>reject?'approved':reject>agree?'rejected':'tie'};
+  return {...counts,state:'voting'};
+}
+function createReview(post,voterUids,viewers,deadlineMs,roundId,now=Date.now()){
+  if(!post?.published)throw new Error('請先用原本的分享功能發布策略，再送審。');
+  const voters=[...new Set(voterUids)];
+  if(!voters.length||voters.length>100)throw new Error('策略授權名單需有 1～100 位投票成員。');
+  if(voters.some(uid=>uid===post.ownerUid||!viewers.includes(uid)))throw new Error('投票成員必須已取得策略授權，作者不能代替成員投票。');
+  if(!Number.isFinite(deadlineMs)||deadlineMs<=now||deadlineMs>now+30*86400000)throw new Error('請設定未來 30 天內的審核截止時間。');
+  return {roundId,strategyUpdatedAt:post.updatedAt,voterUids:voters,deadlineMs,createdMs:now,choices:{},reasons:{},voterProfiles:{},adoptedMs:0};
+}
+function castReviewVote(round,post,viewers,uid,choice,reason='',profile={},now=Date.now()){
+  const state=reviewState(round,post,viewers,now).state;
+  if(!['voting'].includes(state))throw new Error('本輪投票已失效、截止或已採用，請重新整理。');
+  if(!round.voterUids.includes(uid))throw new Error('你不是本輪指定的審核成員。');
+  if(!['agree','reject'].includes(choice))throw new Error('請選擇同意或否決。');
+  const text=String(reason).trim();
+  if(text.length>500)throw new Error('投票理由最多 500 字。');
+  const voterProfile={displayName:String(profile.displayName||'').slice(0,80),photoURL:String(profile.photoURL||'').slice(0,500)};
+  return {...round,choices:{...round.choices,[uid]:choice},reasons:{...round.reasons,[uid]:text},voterProfiles:{...(round.voterProfiles||{}),[uid]:voterProfile}};
+}
+function teacherDecisionState(decision,post){
+  if(!decision)return 'none';
+  if(decision.strategyUpdatedAt!==post.updatedAt)return 'outdated';
+  return decision.decision==='pending'?'pending':decision.decision==='approved'?'approved':'returned';
+}
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBJPiSvGWMsZulBR7iQpN5gzslC8-9d7YA",
+  authDomain: "networth-app-c56c7.firebaseapp.com",
+  projectId: "networth-app-c56c7",
+  storageBucket: "networth-app-c56c7.firebasestorage.app",
+  messagingSenderId: "286114990399",
+  appId: "1:286114990399:web:d02af67f76a9adfdaf2b8a"
+};
+const ADMIN_EMAIL = "aaz52468599@gmail.com";
+const VERSION = "2.4.11";
+const DEFAULT_SETTINGS = { goal: 10000000, targetDate: "2030-05-17", monthly: 0, finnhubKey: "" };
+
+const TYPES = { manual: "手動資產", crypto: "加密貨幣", tw: "台股", stock: "美股", usd: "美元資產" };
+const finite = value => typeof value === "number" && Number.isFinite(value);
+const positive = value => finite(value) && value > 0;
+const id = () => crypto.randomUUID();
+const taipeiDay = (date = new Date()) => new Intl.DateTimeFormat("sv-SE", {timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(date);
+const stamp = value => {
+  const date = new Date(value);
+  return value && finite(date.getTime()) ? new Intl.DateTimeFormat("zh-TW", {timeZone:"Asia/Taipei",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(date) : "時間未確認";
+};
+const num = (value, digits = 2) => finite(value) ? value.toLocaleString("zh-TW", {maximumFractionDigits:digits}) : "—";
+const money = value => finite(value) ? "NT$ " + num(value, 0) : "—";
+const compact = value => Math.abs(value) >= 1e8 ? num(value / 1e8, 2) + " 億" : num(value / 1e4, 1) + " 萬";
+const signed = value => finite(value) ? (value > 0 ? "+" : value < 0 ? "−" : "") + num(Math.abs(value), 0) : "—";
+const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function normalizeAsset(old, legacyQuotes = {}) {
+  const a = {...old, mode: old.mode || "manual", id: old.id || id(), isSummary: old.isSummary === true};
+  if (a.mode === "manual" || a.quote) return a;
+  const qty = +a.qty || 0, fx = +legacyQuotes?.fx || 0;
+  const tw = a.mode === "tw";
+  const nativePrice = a.mode === "usd" ? 1 : qty > 0 && (tw || fx > 0) && positive(+a.value) ? +a.value / qty / (tw ? 1 : fx) : null;
+  a.legacyValue = finite(+a.value) ? +a.value : 0;
+  a.quote = {nativePrice, fx:tw ? 1 : fx || null, currency:tw ? "TWD" : "USD", source:"舊資料快照", priceAt:null, fetchedAt:null, fxAt:null, error:"舊報價時間未確認，請更新"};
+  return a;
+}
+
+function valuation(a) {
+  const manual = a.mode === "manual", tw = a.mode === "tw";
+  const currency = manual || tw ? "TWD" : "USD";
+  const qty = +a.qty || 0;
+  const price = manual ? null : a.mode === "usd" ? 1 : a.quote?.nativePrice;
+  const fx = currency === "TWD" ? 1 : a.quote?.fx;
+  const nativeValue = manual ? (+a.value || 0) : positive(price) ? price * qty : null;
+  const calculated = finite(nativeValue) && positive(fx);
+  const value = calculated ? nativeValue * fx : finite(a.legacyValue) ? a.legacyValue : null;
+  const costNative = manual ? (positive(+a.cost) ? +a.cost : null) : positive(+a.costPer) ? +a.costPer * (a.mode === "usd" ? 1 : qty) : null;
+  const fixedCost = positive(+a.costFx) && positive(costNative) ? costNative * +a.costFx : null;
+  let cost = currency === "TWD" ? costNative : fixedCost ?? (positive(fx) && positive(costNative) ? costNative * fx : null);
+  // Older manual-total cost records are preserved when no native cost exists.
+  if (!positive(costNative) && positive(+a.cost)) cost = +a.cost;
+  const pnl = calculated && finite(value) && positive(cost) ? value - cost : null;
+  const pnlNative = finite(nativeValue) && positive(costNative) ? nativeValue - costNative : null;
+  const kind = currency === "USD" && positive(costNative) && !positive(+a.costFx) ? "價差損益・未計匯差" : "浮動損益";
+  return {value, nativeValue, currency, price, fx, cost, pnl, pnlNative, percent:positive(cost) && finite(pnl) ? pnl / cost * 100 : null, kind, missing:!calculated, stale:!manual && (!!a.quote?.error || !a.quote?.fetchedAt), excluded:a.isSummary === true};
+}
+
+function portfolio(assets) {
+  const included = assets.filter(a => !a.isSummary).map(a => ({asset:a,...valuation(a)}));
+  const covered = included.filter(a => finite(a.pnl));
+  const total = included.reduce((sum,a) => sum + (a.value ?? 0), 0);
+  const cost = covered.reduce((sum,a) => sum + a.cost, 0);
+  const pnl = covered.length ? covered.reduce((sum,a) => sum + a.pnl, 0) : null;
+  return {total,cost,pnl,percent:cost > 0 && finite(pnl) ? pnl / cost * 100 : null,count:included.length,covered:covered.length,stale:included.filter(a=>a.stale || a.missing).length};
+}
+
+function requiredRates(assets, settings, now = new Date()) {
+  const value = portfolio(assets).total, goal = +settings.goal, monthly = +settings.monthly || 0;
+  const end = new Date(settings.targetDate + "T23:59:59+08:00");
+  if (!positive(goal) || !finite(end.getTime()) || monthly < 0) return {state:"invalid"};
+  const days = Math.max(0, (end - now) / 86400000), months = days / (365.2425/12);
+  const gap = goal - value;
+  if (gap <= 0) return {state:"done",days,months,gap:0};
+  if (months <= 0) return {state:"expired",days,months,gap};
+  if (value === 0 && monthly === 0) return {state:"noCapital",days,months,gap};
+  const future = r => { const l = Math.log1p(r); return value * Math.exp(months*l) + (r === 0 ? monthly * months : monthly * Math.expm1(months*l)/r); };
+  if (future(0) >= goal) return {state:"contributions",days,months,gap,rm:0,ry:0};
+  let lo = 0, hi = 0.01;
+  while (future(hi) < goal && hi < 1024) hi *= 2;
+  if (future(hi) < goal) return {state:"unsolved",days,months,gap};
+  for (let i=0;i<90;i++) { const m = (lo+hi)/2; if (future(m) < goal) lo=m; else hi=m; }
+  const rm=(lo+hi)/2, ry=Math.expm1(12*Math.log1p(rm));
+  if (!finite(ry) || Math.abs(future(rm)-goal)/goal > 1e-7) return {state:"unsolved",days,months,gap};
+  return {state:"calculated",days,months,gap,rm,ry,rd:Math.expm1(Math.log1p(ry)/365.2425),final:future(rm)};
+}
+
+// Explicit allowlist: credentials, settings, history and unselected assets never enter a shared document.
+function sharedAsset(a) {
+  const keys=["id","name","mode","type","symbol","qty","value","legacyValue","cost","costPer","costFx","isSummary","quote","updatedAt"];
+  const result=Object.fromEntries(keys.filter(k=>a[k]!==undefined).map(k=>[k,structuredClone(a[k])]));
+  if(result.quote){const allowed=["nativePrice","fx","currency","source","priceAt","fetchedAt","fxAt","fxFetchedAt","error","lastAttemptAt"];result.quote=Object.fromEntries(allowed.filter(k=>result.quote[k]!==undefined).map(k=>[k,result.quote[k]]));}
+  return result;
+}
+function makeSharedPortfolio(assets, settings, name, grants, selectedIds) {
+  const selected=new Set(selectedIds);
+  return {ownerName:name,viewerUids:[...new Set(grants)],assets:assets.filter(a=>selected.has(a.id)).map(sharedAsset),updatedAt:new Date().toISOString()};
+}
+
+function parseAsset(fields, previous = null) {
+  const mode=fields.mode;
+  if (!(mode in TYPES)) throw new Error("請選擇資產類型");
+  const toNumber = (raw, title, required=false) => {
+    if (raw === "" || raw == null) {if(required) throw new Error("請填"+title); return null;}
+    const value=Number(raw); if(!finite(value) || value<0) throw new Error(title+"需為有效的非負數字"); return value;
+  };
+  const name=fields.name.trim() || fields.symbol?.trim().toUpperCase() || (mode==="usd" ? "美元資產" : "");
+  if(!name || name.length>80) throw new Error("名稱需為 1～80 個字");
+  const a={id:previous?.id || id(),name,mode,type:mode==="manual"?fields.type:TYPES[mode],symbol:null,qty:null,cost:null,costPer:null,costFx:null,isSummary:mode==="usd"&&fields.isSummary===true,createdAt:previous?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
+  if(mode==="manual") {a.value=toNumber(fields.value,"目前價值",true);a.cost=toNumber(fields.cost,"台幣本金");return a;}
+  a.qty=toNumber(fields.qty,mode==="usd"?"美元金額":"持有數量",true);
+  if(!positive(a.qty)) throw new Error("數量或金額需大於 0");
+  if(mode!=="usd") {a.symbol=fields.symbol.trim();if(!a.symbol || !/^[A-Za-z0-9.^_-]{1,80}$/.test(a.symbol)) throw new Error("請填有效的代號"); if(mode!=="tw") a.symbol=a.symbol.toUpperCase();}
+  a.costPer=toNumber(fields.costPer,"買入成本");
+  a.costFx=mode==="tw"?null:toNumber(fields.costFx,"買入匯率");
+  if(a.costFx===0) throw new Error("買入匯率需大於 0，或留空");
+  if(previous?.mode===mode && previous?.symbol===a.symbol) {a.quote=previous.quote;a.legacyValue=previous.legacyValue;}
+  return a;
+}
+
+const paths={home:'<path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6"/>',assets:'<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M8 6V3h8v3M3 12h18M10 12v3h4v-3"/>',sharing:'<circle cx="6" cy="12" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="m9 10 6-4M9 14l6 4"/>',history:'<path d="M4 18V6M4 18h17m-13-4 4-5 4 3 5-7"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="m9 3-1 3-3 1-2 4 2 3 1 4 4 3 4-1 4-2 3-4-1-4-3-2-3-3z"/>',arrow:'<path d="m7 17 10-10M7 7h10v10"/>',plus:'<path d="M12 5v14M5 12h14"/>',refresh:'<path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-2l2 2M18 17A7 7 0 0 1 6 19l-2-2"/>',lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4M12 14v3"/>',users:'<circle cx="9" cy="7" r="3"/><path d="M2 21v-3a7 7 0 0 1 14 0v3M17 4a3 3 0 0 1 0 6M19 14a6 6 0 0 1 3 5"/>',download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',edit:'<path d="m14 4 6 6M4 20l4-1L21 6l-3-3L5 16l-1 4z"/>',check:'<path d="m5 12 4 4L20 5"/>',chevron:'<path d="m9 5 7 7-7 7"/>',document:'<path d="M14 3H5v18h14V8l-5-5zM14 3v5h5M8 12h8M8 16h6"/>',logout:'<path d="M9 4H3v16h6M9 12h12m-4-4 4 4-4 4"/>'};
+const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]||paths.document}</svg>`;
+
+
+const postKeys=['id','ownerUid','ownerName','title','symbol','term','thesis','entry','invalidation','target','status','published','createdAt','updatedAt'];
+const dateOK=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(new Date(value).getTime())&&new Date(value).toISOString().slice(0,10)===value;
+function buildBackup(state){
+  const {goal,targetDate,monthly}=state.settings;
+  return {version:2,exportedAt:new Date().toISOString(),settings:{goal,targetDate,monthly},assets:state.assets.map(sharedAsset),history:state.history.map(({date,total})=>({date,total})),strategies:state.ownPosts.map(p=>Object.fromEntries(postKeys.filter(k=>p[k]!==undefined).map(k=>[k,p[k]])))};
+}
+function parseBackup(data){
+  if(!data||!Array.isArray(data.assets)||!Array.isArray(data.history)||data.assets.length>1000||data.history.length>5000||(data.version!=null&&![1,2].includes(data.version)))throw new Error('不是有效或支援的資產備份。');
+  const assets=data.assets.map(raw=>{
+    if(!raw||typeof raw.name!=='string'||!['manual','stock','tw','crypto','usd'].includes(raw.mode))throw new Error('備份中有無效資產，尚未匯入。');
+    const old=normalizeAsset(raw,data.quotes);
+    const asset=parseAsset({...old,name:old.name,symbol:old.symbol||'',type:typeof old.type==='string'?old.type.slice(0,80):'其他'});
+    const sanitized=sharedAsset(old);
+    if(sanitized.quote){
+      for(const field of ['nativePrice','fx'])if(sanitized.quote[field]!=null&&(!finite(sanitized.quote[field])||sanitized.quote[field]<=0))throw new Error('備份中有無效報價。');
+      for(const field of ['priceAt','fetchedAt','fxAt','fxFetchedAt','lastAttemptAt'])if(sanitized.quote[field]!=null&&!finite(new Date(sanitized.quote[field]).getTime()))throw new Error('備份中有無效報價時間。');
+      for(const field of ['currency','source','error'])if(sanitized.quote[field]!=null&&typeof sanitized.quote[field]!=='string')throw new Error('備份中有無效報價說明。');
+      asset.quote=sanitized.quote;
+    }
+    if(sanitized.legacyValue!=null){if(!finite(sanitized.legacyValue)||sanitized.legacyValue<0)throw new Error('備份中有無效舊市值。');asset.legacyValue=sanitized.legacyValue;}
+    return asset;
+  });
+  const history=data.history.map(h=>{if(!h||!dateOK(h.date)||!finite(h.total)||h.total<0)throw new Error('備份中有無效日期或資產紀錄。');return {date:h.date,total:h.total};});
+  if(new Set(history.map(h=>h.date)).size!==history.length)throw new Error('備份中有重複的紀錄日期。');
+  let settings=null;
+  if(data.settings){const {goal,targetDate,monthly=0}=data.settings;if(!finite(goal)||goal<=0||!dateOK(targetDate)||!finite(monthly)||monthly<0)throw new Error('備份中的財務目標無效。');settings={goal,targetDate,monthly};}
+  if(data.strategies!=null&&(!Array.isArray(data.strategies)||data.strategies.length>200))throw new Error('備份中的策略格式或筆數無效。');
+  const strategies=(data.strategies||[]).map(raw=>{
+    const post={id:id(),published:false};
+    for(const [key,max,required] of [['title',100,true],['symbol',80,true],['thesis',4000,true],['entry',4000,false],['invalidation',4000,false],['target',4000,false]]){const value=raw?.[key]??'';if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw new Error('備份中的策略文字無效。');post[key]=value.trim();}
+    if(!['long','short'].includes(raw.term)||!['watching','active','closed'].includes(raw.status))throw new Error('備份中的策略週期或狀態無效。');
+    post.term=raw.term;post.status=raw.status;post.createdAt=raw.createdAt&&finite(new Date(raw.createdAt).getTime())?raw.createdAt:new Date().toISOString();post.updatedAt=new Date().toISOString();return post;
+  });
+  return {assets,history,settings,strategies};
+}
+
+const cloud={isAdmin:()=>false,connect:async()=>{throw new Error("這是獨立預覽，請使用示範版查看；正式版請依更新說明安裝。");}};const refreshMarket=async()=>{throw new Error("獨立預覽使用示範行情。");};
+
+
+
+
+
+
 
 const $=name=>document.getElementById(name);
 const PAGES={home:["總覽","OVERVIEW"],assets:["我的持倉","PORTFOLIO"],sharing:["共享空間","SHARED SPACE"],history:["資產紀錄","HISTORY"],settings:["設定","PREFERENCES"]};
@@ -187,5 +972,8 @@ function registerAppUpdates(){
   navigator.serviceWorker.addEventListener("controllerchange",()=>{if(wasControlled){updateReady=true;applyUpdate();}});
   navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"}).then(registration=>{registration.update().catch(()=>{});document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){applyUpdate();registration.update().catch(()=>{});}});}).catch(()=>{});
 }
-if("serviceWorker"in navigator)registerAppUpdates();
-if(new URLSearchParams(location.search).has("demo"))startDemo();else initFirebase();
+
+startDemo();
+</script>
+</body>
+</html>
