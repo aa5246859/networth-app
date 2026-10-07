@@ -102,3 +102,9 @@ test('duplicate investment holdings consolidate by default and retain editable o
 });
 
 
+
+test('consolidated holdings sort by combined market value',()=>{
+  const {api}=harness();const q={nativePrice:100,fx:1,currency:'USD',fetchedAt:'2026-10-07'};
+  const lots=[{id:'btc1',name:'BTC one',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'btc2',name:'BTC two',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'mstr',name:'MSTR',mode:'stock',symbol:'MSTR',qty:1,quote:q}];
+  const html=api.assetRows(lots);assert.ok(html.indexOf('BTC · 整合 2 筆')<html.indexOf('MSTR · 美股'));
+});
