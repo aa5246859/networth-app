@@ -91,3 +91,14 @@ test("strategy cards are collapsed by default and use participation rather than 
 
 
 test("admin users are grouped by access state, searchable, and show counts",()=>{const {api}=harness();const card={dataset:{statusFilter:"approved"},innerHTML:""};const users=[{id:"a",name:"Approved User",email:"a@example.com",status:"approved"},{id:"p",name:"Pending User",email:"p@example.com",status:"pending"}];api.renderAdminUsers(card,users);assert.match(card.innerHTML,/已核准/);assert.match(card.innerHTML,/Approved User/);assert.doesNotMatch(card.innerHTML,/Pending User|p@example.com/);assert.match(card.innerHTML,/id="adminSearch"/);assert.match(styles,/\.admin-filters/);});
+
+test('duplicate investment holdings consolidate by default and retain editable original lots',()=>{
+  const {api}=harness();
+  const base={mode:'crypto',symbol:'BTC',type:'加密貨幣',quote:{nativePrice:100000,fx:32,currency:'USD',source:'Demo',fetchedAt:'2026-10-07T00:00:00Z'}};
+  const lots=[{...base,id:'btc-a',name:'Bitcoin',qty:0.1,costPer:80000,costFx:32},{...base,id:'btc-b',name:'BTC 冷錢包',qty:0.2,costPer:90000,costFx:31}];
+  let view=api.assetRows(lots);assert.match(view,/BTC · 整合 2 筆/);assert.match(view,/data-action="toggle-asset-group"/);assert.doesNotMatch(view,/data-id="btc-a"/);
+  api.s.expandedAssetGroups.add('crypto:BTC');view=api.assetRows(lots);assert.match(view,/Bitcoin/);assert.match(view,/BTC 冷錢包/);assert.match(view,/data-id="btc-a"/);assert.match(view,/原始持倉/);
+  api.s.assetDisplayMode='individual';view=api.assetRows(lots);assert.doesNotMatch(view,/整合 2 筆/);assert.match(view,/Bitcoin/);assert.match(view,/BTC 冷錢包/);
+});
+
+

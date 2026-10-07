@@ -53,6 +53,33 @@ export function portfolio(assets) {
   return {total,cost,pnl,percent:cost > 0 && finite(pnl) ? pnl / cost * 100 : null,count:included.length,covered:covered.length,stale:included.filter(a=>a.stale || a.missing).length};
 }
 
+export function aggregateHoldings(assets) {
+  const groups=new Map(), result=[];
+  for(const asset of assets){
+    if(!['crypto','tw','stock'].includes(asset.mode)||!asset.symbol||asset.isSummary){result.push(asset);continue;}
+    const symbol=String(asset.symbol).trim().toUpperCase();
+    if(!symbol){result.push(asset);continue;}
+    const key=asset.mode+':'+symbol;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(asset);
+  }
+  for(const [key,lots] of groups){
+    if(lots.length===1){result.push(lots[0]);continue;}
+    const values=lots.map(asset=>({asset,value:valuation(asset)}));
+    const quantity=lots.reduce((sum,asset)=>sum+(+asset.qty||0),0);
+    const valued=values.filter(item=>finite(item.value.value));
+    const costed=values.filter(item=>finite(item.value.pnl)&&finite(item.value.cost));
+    const nativeCosted=lots.filter(asset=>positive(+asset.costPer)&&positive(+asset.qty));
+    const nativeCostQty=nativeCosted.reduce((sum,asset)=>sum+(+asset.qty||0),0);
+    const cost=costed.reduce((sum,item)=>sum+item.value.cost,0);
+    const pnl=costed.length?costed.reduce((sum,item)=>sum+item.value.pnl,0):null;
+    const first=lots[0],quotes=values.filter(item=>positive(item.value.price));
+    const quoteQty=quotes.reduce((sum,item)=>sum+(+item.asset.qty||0),0);
+    result.push({id:'aggregate:'+key,aggregate:true,aggregateKey:key,lots,mode:first.mode,symbol:String(first.symbol).trim().toUpperCase(),name:first.name||first.symbol,type:first.type,qty:quantity,averageCost:nativeCostQty?nativeCosted.reduce((sum,asset)=>sum+(+asset.costPer)*(+asset.qty),0)/nativeCostQty:null,value:valued.length?valued.reduce((sum,item)=>sum+item.value.value,0):null,pnl:costed.length?pnl:null,cost:costed.length?cost:null,percent:cost>0&&finite(pnl)?pnl/cost*100:null,coverage:costed.length,valuationCount:valued.length,nativeValue:values.every(item=>finite(item.value.nativeValue))?values.reduce((sum,item)=>sum+item.value.nativeValue,0):null,price:quoteQty?quotes.reduce((sum,item)=>sum+item.value.price*(+item.asset.qty||0),0)/quoteQty:null,currency:values.find(item=>item.value.currency)?.value.currency||'USD',stale:values.some(item=>item.value.stale||item.value.missing),source:first.quote?.source||'',unit:first.mode==='stock'||first.mode==='tw'?'股':'顆'});
+  }
+  return result;
+}
+
 export function requiredRates(assets, settings, now = new Date()) {
   const value = portfolio(assets).total, goal = +settings.goal, monthly = +settings.monthly || 0;
   const end = new Date(settings.targetDate + "T23:59:59+08:00");
