@@ -1,4 +1,4 @@
-import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.5";
+import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.6";
 import {TYPES,finite,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,requiredRates,sharedAsset,parseAsset} from "./core.js";
 import {refreshMarket} from "./quotes.js";
 import {icon} from "./icons.js";
@@ -33,14 +33,16 @@ function home(){
   const priceOnly=s.assets.some(a=>!a.isSummary&&valuation(a).kind.includes("未計匯差"));
   const amountClass=String(Math.round(p.total)).length>9?" long-amount":"";
   return `${heading("持倉與目標，一眼掌握。")}
-    <div class="overview-grid"><section class="hero">
-      <div class="hero-top"><span class="eyebrow">目前總資產</span></div>
-      <div class="hero-amount mono${amountClass}"><span class="currency">NT$</span><span class="amount-value">${num(p.total,0)}</span></div>
-      <p class="hero-caption">${p.count} 個持倉 · 目標 ${compact(goal)}</p>${p.stale?`<p class="quote-warning">${p.stale} 筆行情待確認</p>`:""}
-      <div class="hero-bottom">
-        <div><div class="hero-pnl-label">目前浮動損益</div><div class="hero-pnl mono">${pnl(p.pnl,p.percent)}</div><div class="hero-pnl-caption">${p.covered} / ${p.count} 筆已設定成本${priceOnly?" · 部分美元部位未計匯差":""}</div></div>
-        <div class="quote-state">${latest?"最近成功更新 "+stamp(latest):"尚未取得行情"}<button class="text-button" data-action="refresh" ${s.refreshing?"disabled":""}>${icon("refresh")}${s.refreshing?"更新中…":"更新報價"}</button></div>
+    <div class="overview-grid"><section class="hero wealth-summary" aria-label="資產總覽">
+      <div class="summary-heading"><span>目前總資產</span><span class="summary-currency">NT$ · 台幣</span></div>
+      <div class="summary-amount mono${amountClass}">${num(p.total,0)}</div>
+      <p class="summary-holdings">${p.count} 個持倉${p.stale?`<span class="gold"> · ${p.stale} 筆行情待確認</span>`:""}</p>
+      <div class="summary-return">
+        <div class="summary-return-label">目前浮動損益</div>
+        <div class="summary-pnl mono">${pnl(p.pnl,p.percent)}</div>
+        <details class="summary-method"><summary>損益計算說明 ${icon("chevron")}</summary><p>${p.covered} / ${p.count} 筆已設定成本。未填成本的部位不計入損益。${priceOnly?"部分美元部位未填買入匯率，損益未計入匯差。":""}</p></details>
       </div>
+      <div class="summary-footer"><div class="summary-updated"><span>行情更新</span><span class="mono">${latest?stamp(latest):"尚未取得行情"}</span></div><button class="button secondary summary-refresh" data-action="refresh" ${s.refreshing?"disabled":""}>${icon("refresh")}${s.refreshing?"更新中…":"更新報價"}</button></div>
     </section>
     <div class="home-grid">
       <section class="card trend-card"><div class="card-header"><h2>資產變化</h2><button class="text-button" data-page="history">查看紀錄 ${icon("arrow")}</button></div>${graph(s.history,165)}</section>
