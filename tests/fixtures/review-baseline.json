@@ -1,0 +1,29 @@
+{
+  "cssLength": 36954,
+  "cssHash": "9474c694e10ab9da004b3a5058f1081f918aed94eb8cd56eb7c2cff2259fecbd",
+  "blocks": [
+    {
+      "start": "function home(){",
+      "end": "function ratesHtml(",
+      "hash": "13a0792aeaf00947939cb205e7d223264b3bf9196f8bf519cbb482d7c0b35cc7"
+    },
+    {
+      "start": "function assetRows(",
+      "end": "function sharing(",
+      "hash": "02901c6562343dcebdff427caf60627007f361c8380c9722abe1d266ec4d0a32"
+    },
+    {
+      "start": "function settingsPage(){",
+      "end": "function render(",
+      "hash": "62cc671bfc74095a2a682acba01bc761445ac93d22872201b3a6f29dea84a8bf"
+    },
+    {
+      "start": "function openStrategy(",
+      "end": "$(\"strategyForm\").onsubmit=",
+      "hash": "08a932a62722c387f3f49b23081df1bd58423bf925a0395f5b4e29e91506a1f5"
+    }
+  ],
+  "strategyHash": "054ac634a97a452062b5ff0272a2e54d4d51d6c31173784c8b48df7a12f29d21",
+  "htmlHash": "e59cca7b17264812bff19d05679f857f2a21df5c40e202cee84ed973360da3be",
+  "rulesHash": "7a78b2d52f4c2a210c4178726dc33b32c0e1e99c71eff3a344753b2cd54e6f19"
+}

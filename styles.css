@@ -480,3 +480,30 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
   .summary-pnl{font-size:21px}
   .summary-refresh{padding:9px 10px}
 }
+/* Strategy review draft: all additions are scoped to sr-*; existing styles are untouched. */
+.sr-panel{border-top:1px solid var(--line);padding-top:18px;margin-top:20px;min-width:0}
+.sr-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.sr-heading h3{font-size:15px;font-weight:500;margin:0}
+.sr-counts{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:12px 0 8px}
+.sr-note{font-size:12px;color:var(--muted);line-height:1.8;margin-top:8px;overflow-wrap:anywhere}
+.sr-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.sr-actions .button{font-size:13px;padding:9px 13px;min-height:40px}
+.sr-voters{list-style:none;padding:0;margin:14px 0 0}
+.sr-voter{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sr-voter:last-child{border-bottom:0}
+.sr-voter small{grid-column:1/-1;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.7}
+.sr-demo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:12px}
+.sr-demo select{width:auto;min-width:0;max-width:100%;padding:8px 10px;font-size:12px}
+.sr-dialog{width:min(480px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto}
+.sr-dialog-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}
+.sr-dialog-heading h2{font-size:20px;margin:0}
+.sr-dialog fieldset{border:0;padding:0;margin:0 0 18px;min-width:0}
+.sr-dialog legend{font-size:14px;margin-bottom:8px;color:var(--muted)}
+.sr-dialog .checkbox-row{font-size:14px;padding:10px 0;overflow-wrap:anywhere}
+.sr-dialog input[type=datetime-local]{box-sizing:border-box;width:100%;max-width:100%;min-width:0}
+.sr-dialog .sr-actions .button{flex:1}
+.sr-dialog .sr-error{color:var(--down);font-size:13px;line-height:1.6;min-height:20px}
+.sr-history{margin-top:12px;font-size:12px;color:var(--muted)}
+.sr-history summary{cursor:pointer;padding:8px 0}
+.sr-round{padding:10px 0;border-top:1px solid var(--line)}
+.sr-round p{margin:4px 0;overflow-wrap:anywhere;white-space:pre-wrap}

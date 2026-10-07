@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createHash} from 'node:crypto';
+import {VERSION} from '../config.js';
+const read=file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8');
+const baseline=JSON.parse(read('tests/fixtures/review-baseline.json'));
+const hash=s=>createHash('sha256').update(s).digest('hex');
+const extract=(source,a,b)=>source.slice(source.indexOf(a),source.indexOf(b));
+test('original styles, home, holdings and settings presentation remain unchanged',()=>{assert.equal(hash(read('styles.css').slice(0,baseline.cssLength)),baseline.cssHash);for(const block of baseline.blocks)assert.equal(hash(extract(read('app.js'),block.start,block.end)),block.hash);});
+test('strategy card differs only by the appended review block; original input dialogs are unchanged',()=>{const draft=extract(read('app.js'),'function strategyPage(','function invitesHtml(').replace('${strategyReviewHtml(p,own)}','');assert.equal(hash(draft),baseline.strategyHash);const html=read('index.html').replace(/  <dialog id="reviewDialog"[\s\S]*?<\/dialog>\n/,'').replaceAll(VERSION,'VERSION');assert.equal(hash(html),baseline.htmlHash);});
+test('existing Firestore authorization remains intact outside the new collection',()=>{const rules=read('firestore.rules').replace(/    \/\/ Additive review data:[\s\S]*?(?=    match \/shareInvites)/,'');assert.equal(hash(rules),baseline.rulesHash);});

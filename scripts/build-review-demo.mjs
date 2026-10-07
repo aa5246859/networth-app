@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+let html=fs.readFileSync(path.join(root,'preview.html'),'utf8');
+html=html.replace(/startDemo\(\);\s*<\/script>/,`startDemo();s.page="sharing";s.sharingTab="long";render();\n</script>`);
+html=html.replace('<title>Wealth Tracker · 新版互動預覽</title>','<title>Wealth Tracker｜策略投票草稿（未發布）</title>');
+html=html.replace('示範資料，未連接你的帳號','策略投票草稿 · 示範資料 · 未發布');
+const output=process.argv[2]||path.join(root,'strategy-review-preview.html');
+fs.writeFileSync(output,html);console.log(output);

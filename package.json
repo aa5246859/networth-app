@@ -1,11 +1,11 @@
 {
   "name": "wealth-tracker",
-  "version": "2.4.8",
+  "version": "2.4.9",
   "private": true,
   "type": "module",
   "scripts": {
     "pretest": "node scripts/build-preview.mjs && node scripts/build-comparison.mjs",
-    "test": "node --test --test-isolation=none tests/core.test.mjs tests/quotes.test.mjs tests/backup.test.mjs tests/store.test.mjs tests/view.test.mjs tests/pwa.test.mjs",
+    "test": "node --test --test-isolation=none tests/core.test.mjs tests/quotes.test.mjs tests/backup.test.mjs tests/store.test.mjs tests/view.test.mjs tests/pwa.test.mjs tests/review.test.mjs tests/review-store.test.mjs tests/review-preservation.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore --project demo-wealth-tracker \"node --test tests/firestore-rules.test.mjs\""
   },
   "devDependencies": {

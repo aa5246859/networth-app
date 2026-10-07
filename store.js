@@ -1,3 +1,4 @@
+import {reviewRepository} from './review-store.js';
 import {FIREBASE_CONFIG,ADMIN_EMAIL,DEFAULT_SETTINGS} from "./config.js";
 import {normalizeAsset,sharedAsset} from "./core.js";
 let sdk,db,auth;
@@ -186,3 +187,9 @@ export async function saveStrategy(uid,post) {
 export const deleteStrategy=(uid,postId)=>sdk.deleteDoc(d("strategies",uid,"posts",postId));
 export async function adminUsers() {const snap=await sdk.getDocs(c("access"));return snap.docs.map(s=>({...s.data(),id:s.id}));}
 export const setAccess=(uid,status)=>sdk.setDoc(d("access",uid),{status},{merge:true});
+
+export const loadReview=(uid,postId)=>reviewRepository(sdk,db).load(uid,postId);
+export const startReview=(uid,postId,voters,deadline,roundId)=>reviewRepository(sdk,db).start(uid,postId,voters,deadline,roundId);
+export const voteReview=(ownerUid,postId,roundId,uid,choice,reason)=>reviewRepository(sdk,db).vote(ownerUid,postId,roundId,uid,choice,reason);
+export const adoptStrategyReview=(ownerUid,postId,roundId,uid)=>reviewRepository(sdk,db).adopt(ownerUid,postId,roundId,uid);
+export const reviewHistory=(uid,postId)=>reviewRepository(sdk,db).history(uid,postId);

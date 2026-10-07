@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=name=>fs.readFileSync(path.join(root,name),'utf8');
 const inlineModule=source=>source.replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
-const js=[inlineModule(read('config.js')),inlineModule(read('core.js')),inlineModule(read('icons.js')),inlineModule(read('backup.js')),
+const js=[inlineModule(read('review.js')),inlineModule(read('config.js')),inlineModule(read('core.js')),inlineModule(read('icons.js')),inlineModule(read('backup.js')),
   'const cloud={isAdmin:()=>false,connect:async()=>{throw new Error("這是獨立預覽，請使用示範版查看；正式版請依更新說明安裝。");}};const refreshMarket=async()=>{throw new Error("獨立預覽使用示範行情。");};',
   inlineModule(read('app.js')).replace(/if\("serviceWorker"in navigator\)[^\n]*/,'').replace(/^if\(new URLSearchParams.*$/m,'startDemo();')].join('\n');
 let html=read('index.html')
