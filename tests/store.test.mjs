@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {normalizeAsset,sharedAsset} from '../core.js';
-const source=fs.readFileSync(new URL('../store.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'').replace('let sdk,db,auth;','let sdk=__sdk,db={},auth={};');
+const source=fs.readFileSync(new URL('../store.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'').replace('let sdk,db,auth,firebaseApp;','let sdk=__sdk,db={},auth={},firebaseApp={};');
 function harness(seed={}){
   const docs=new Map(Object.entries(structuredClone(seed))),deleted=Symbol('delete'),listeners=[];
   const snap=ref=>({id:ref.split('/').at(-1),exists:()=>docs.has(ref),data:()=>structuredClone(docs.get(ref))});
@@ -27,4 +27,5 @@ test('automatic daily snapshot preserves an existing same-day record',async()=>{
 test('new account loads empty personal records and defaults without copying another user',async()=>{const {api,docs}=harness({'users/owner':{schemaVersion:2,settings:{goal:123456,targetDate:'2040-01-01',finnhubKey:'OWNER_KEY'}},'users/owner/assets/a':asset,'users/owner/history/2026-10-06':{date:'2026-10-06',total:35200}});const before=structuredClone(docs.get('users/owner'));const loaded=await api.loadUser({uid:'new',displayName:'New'});assert.equal(loaded.assets.length,0);assert.equal(loaded.history.length,0);assert.equal(loaded.settings.goal,10000000);assert.equal(loaded.settings.finnhubKey,'');assert.equal(loaded.published.assets.length,0);assert.equal(loaded.published.viewerUids.length,0);assert.equal(loaded.strategyAccess.viewerUids.length,0);assert.deepEqual(docs.get('users/owner'),before);});
 
 test('strategy participation saves caller choice and updates its live listener',async()=>{const {api,docs}=harness();const user={uid:'viewer',displayName:'小明',photoURL:'https://lh3.googleusercontent.com/a'};let rows=[];const unsubscribe=api.listenStrategyParticipation('owner','post',value=>{rows=value;});await api.saveStrategyParticipation(user,'owner','post','participating','revision-1');assert.equal(docs.get('strategyParticipation/owner/posts/post/members/viewer').choice,'participating');assert.equal(rows.length,1);assert.equal(rows[0].uid,'viewer');assert.equal(rows[0].strategyUpdatedAt,'revision-1');await api.saveStrategyParticipation(user,'owner','post','not-participating','revision-1');assert.equal(rows.length,1);assert.equal(rows[0].choice,'not-participating');unsubscribe();await assert.rejects(api.saveStrategyParticipation(user,'owner','post','approve','revision-1'),/參與狀態無效/);});
+
 

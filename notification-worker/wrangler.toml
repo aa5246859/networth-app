@@ -1,0 +1,17 @@
+name = "wealth-tracker-notifications"
+main = "worker.js"
+compatibility_date = "2026-10-07"
+
+[vars]
+FIREBASE_PROJECT_ID = "networth-app-c56c7"
+FIREBASE_API_KEY = "SET_IN_CLOUDFLARE_DASHBOARD"
+APP_ORIGIN = "SET_TO_YOUR_GITHUB_PAGES_ORIGIN"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wealth-tracker-notifications"
+database_id = "CREATE_D1_DATABASE_FIRST"
+
+[triggers]
+crons = ["0 12 * * *"]
+

@@ -10,12 +10,12 @@
     {
       "start": "function assetRows(",
       "end": "function sharing(",
-      "hash": "02901c6562343dcebdff427caf60627007f361c8380c9722abe1d266ec4d0a32"
+      "hash": "61c05dd812c9f28599001ad18a9bb5e4b710864b40c008df6112c424bdd61185"
     },
     {
       "start": "function settingsPage(){",
       "end": "function render(",
-      "hash": "62cc671bfc74095a2a682acba01bc761445ac93d22872201b3a6f29dea84a8bf"
+      "hash": "d6b246114054245a11ace8a4c492eba31e43c5cf383611f3c09d144c6d929283"
     },
     {
       "start": "function openStrategy(",
@@ -27,3 +27,4 @@
   "htmlHash": "e59cca7b17264812bff19d05679f857f2a21df5c40e202cee84ed973360da3be",
   "rulesHash": "7a78b2d52f4c2a210c4178726dc33b32c0e1e99c71eff3a344753b2cd54e6f19"
 }
+

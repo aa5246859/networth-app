@@ -1,7 +1,7 @@
 import {reviewRepository} from './review-store.js';
 import {FIREBASE_CONFIG,ADMIN_EMAIL,DEFAULT_SETTINGS} from "./config.js";
 import {normalizeAsset,sharedAsset} from "./core.js";
-let sdk,db,auth;
+let sdk,db,auth,firebaseApp;
 export async function connect() {
   const [appModule,authModule,firestoreModule]=await Promise.all([
     import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
@@ -9,12 +9,16 @@ export async function connect() {
     import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js")
   ]);
   sdk={...appModule,...authModule,...firestoreModule};
-  const app=sdk.getApps()[0]||sdk.initializeApp(FIREBASE_CONFIG);auth=sdk.getAuth(app);db=sdk.getFirestore(app);
+  const app=sdk.getApps()[0]||sdk.initializeApp(FIREBASE_CONFIG);firebaseApp=app;auth=sdk.getAuth(app);db=sdk.getFirestore(app);
   sdk.getRedirectResult(auth).catch(()=>{});
   return sdk.onAuthStateChanged;
 }
 export const watchAuth=handler=>sdk.onAuthStateChanged(auth,handler);
 export const logout=()=>sdk.signOut(auth);
+export const currentIdToken=()=>auth?.currentUser?.getIdToken();
+export const currentUserId=()=>auth?.currentUser?.uid||"";
+export async function pushToken(registration,vapidKey){const messaging=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js");if(!await messaging.isSupported())throw new Error("這個瀏覽器不支援網頁推播。");return messaging.getToken(messaging.getMessaging(firebaseApp),{vapidKey,serviceWorkerRegistration:registration});}
+export async function removePushToken(){if(!auth?.currentUser||!firebaseApp)return;const messaging=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js");if(await messaging.isSupported())await messaging.deleteToken(messaging.getMessaging(firebaseApp));}
 export async function login() {
   const ua=navigator.userAgent||"";
   if(/GSA\//i.test(ua)){
