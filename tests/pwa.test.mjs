@@ -23,6 +23,6 @@ test('every app module and service-worker shell file exists and cache version ma
 test('comparison preview embeds the same complete app and has valid device-switching JavaScript',()=>{
   const html=read('device-preview.html');const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];new vm.Script(script);
   const payload=script.match(/const content=(.*?);\n/)[1];assert.equal(JSON.parse(payload),read('preview.html'));
-  assert.ok(html.includes('id="desktop"'));assert.ok(html.includes('id="mobile"'));
+  assert.ok(html.includes('allow-forms'),'Interactive preview must allow form submissions');assert.ok(html.includes('id="desktop"'));assert.ok(html.includes('id="mobile"'));
   assert.ok(script.includes(".srcdoc=content"));assert.ok(!script.includes('firebasejs/'));
 });
