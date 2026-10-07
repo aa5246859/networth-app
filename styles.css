@@ -449,11 +449,11 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .summary-amount{font-size:clamp(38px,3.8vw,52px);font-weight:650;letter-spacing:-1.3px;line-height:1.15;margin-top:22px;overflow-wrap:anywhere}
 .summary-amount.long-amount{font-size:clamp(28px,2.7vw,38px);letter-spacing:-.6px}
 .summary-holdings{font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6}
-.summary-return{margin:24px 0 20px;padding:16px 18px;background:#10161466;border:1px solid var(--line);border-radius:12px}
+.summary-return{margin:24px 0 20px;padding:20px 0 0;border-top:1px solid var(--line)}
 .summary-return-label{font-size:13px;color:var(--muted);margin-bottom:7px}
 .summary-pnl{font-size:25px;font-weight:500;line-height:1.3;overflow-wrap:anywhere}
 .summary-pnl>span{display:flex;align-items:center;flex-wrap:wrap;gap:7px 10px;min-width:0}
-.summary-pnl small{display:inline-block;font-size:13px;font-weight:400;border:1px solid currentColor;border-radius:6px;padding:3px 6px;line-height:1.3;white-space:nowrap}
+.summary-pnl small{display:inline-block;font-size:13px;font-weight:400;padding:0;line-height:1.3;white-space:nowrap}
 .summary-pnl>.muted{font-size:16px;line-height:1.6}
 .summary-method{margin-top:9px;font-size:12px;color:var(--muted)}
 .summary-method>summary{display:flex;align-items:center;gap:5px;min-height:32px;cursor:pointer;list-style:none;width:fit-content}
@@ -469,14 +469,14 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
   .wealth-summary{padding:24px}
   .summary-amount{font-size:clamp(34px,10.5vw,44px);letter-spacing:-1px;margin-top:20px}
   .summary-amount.long-amount{font-size:clamp(24px,7vw,32px)}
-  .summary-return{margin-top:22px;padding:15px 16px}
+  .summary-return{margin-top:22px;padding:18px 0 0}
   .summary-pnl{font-size:23px}
 }
 @media(max-width:370px){
   .wealth-summary{padding:20px}
   .summary-heading{gap:8px}
   .summary-currency{font-size:11px}
-  .summary-return{padding:14px}
+  .summary-return{padding:18px 0 0}
   .summary-pnl{font-size:21px}
   .summary-refresh{padding:9px 10px}
 }
