@@ -14,7 +14,7 @@ async function firebaseUser(request,env){
     const doc=await access.json().catch(()=>({}));
     if(!access.ok||doc.fields?.status?.stringValue!=="approved")throw new Error("此帳號尚未獲得 App 使用授權。");
   }
-  return {uid:user.localId,token};
+  return {uid:user.localId,email:String(user.email||"").trim().toLowerCase(),token};
 }
 async function readDoc(path,token,env){const response=await fetch("https://firestore.googleapis.com/v1/projects/"+env.FIREBASE_PROJECT_ID+"/databases/(default)/documents/"+path,{headers:{Authorization:"Bearer "+token}});if(!response.ok)throw new Error("無法確認目前策略分享權限。");return response.json();}
 function fieldString(doc,key){return doc.fields?.[key]?.stringValue||"";}
