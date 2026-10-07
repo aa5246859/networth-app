@@ -92,7 +92,7 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/strategies/$(uid)/posts/$(postId)).data.published == true;
       }
       function participationReader() {
-        return approved() && (request.auth.uid == uid || request.auth.uid in get(/databases/$(database)/documents/strategyAccess/$(uid)).data.viewerUids) && publishedStrategy();
+        return approved() && (request.auth.uid == uid || (strategyViewer(uid) && publishedStrategy()));
       }
       function validParticipation() {
         return request.resource.data.keys().hasOnly(["choice", "strategyUpdatedAt", "displayName", "photoURL", "updatedAt"]) &&
