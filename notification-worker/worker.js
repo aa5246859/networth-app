@@ -33,7 +33,14 @@ async function send(env,device,title,body,eventKey,url){
   const response=await fetch("https://fcm.googleapis.com/v1/projects/"+env.FIREBASE_PROJECT_ID+"/messages:send",{method:"POST",headers:{Authorization:"Bearer "+cachedAccess,"Content-Type":"application/json"},body:JSON.stringify({message:{token:device.token,data:{title,body,eventKey,url},webpush:{headers:{TTL:"86400",Urgency:"high"}}}})}),result=await response.json().catch(()=>({}));
   if(!response.ok){if(result.error?.details?.some(d=>d.errorCode==="UNREGISTERED")||result.error?.status==="NOT_FOUND")await env.DB.prepare("DELETE FROM devices WHERE token=?").bind(device.token).run();throw new Error("FCM push failed: "+(result.error?.status||response.status));}
 }
-async function authorizedRecipient(device,env){if(String(device.email||"").toLowerCase()==="aaz52468599@gmail.com")return true;try{const token=await accessToken(env,"https://www.googleapis.com/auth/datastore"),response=await fetch("https://firestore.googleapis.com/v1/projects/"+env.FIREBASE_PROJECT_ID+"/databases/(default)/documents/access/"+encodeURIComponent(device.uid),{headers:{Authorization:"Bearer "+token}}),doc=await response.json();return response.ok&&doc.fields?.status?.stringValue==="approved"}catch{return false}}
+async function authorizedRecipient(device,env,requester=null){
+  if(String(device.email||"").toLowerCase()==="aaz52468599@gmail.com")return true;
+  const token=requester?.email==="aaz52468599@gmail.com"?requester.token:await accessToken(env,"https://www.googleapis.com/auth/datastore");
+  const response=await fetch("https://firestore.googleapis.com/v1/projects/"+env.FIREBASE_PROJECT_ID+"/databases/(default)/documents/access/"+encodeURIComponent(device.uid),{headers:{Authorization:"Bearer "+token}});
+  if(response.status===404)return false;
+  if(!response.ok)throw new Error("無法驗證通知接收者授權；請確認服務帳戶具有 Cloud Datastore Viewer 讀取角色。");
+  const doc=await response.json();return doc.fields?.status?.stringValue==="approved";
+}
 async function bodyOf(request){try{return await request.json()}catch{throw new Error("請求資料格式錯誤。")}}
 async function handle(request,env){
   const headers=cors(env);
@@ -62,13 +69,21 @@ async function handle(request,env){
       const [post,access]=await Promise.all([readDoc("strategies/"+user.uid+"/posts/"+encodeURIComponent(body.postId),user.token,env),readDoc("strategyAccess/"+user.uid,user.token,env)]);
       if(fieldString(post,"ownerUid")!==user.uid||fieldString(post,"id")!==body.postId||post.fields?.published?.booleanValue!==true)throw new Error("只有已發布的策略會發送通知。");
       const viewers=fieldList(access,"viewerUids").filter(uid=>uid!==user.uid);
-      if(!viewers.length)return json({ok:true,sent:0},200,headers);
+      if(!viewers.length)return json({ok:true,sent:0,reason:"no-viewers"},200,headers);
       const recipients=await env.DB.prepare("SELECT uid,device_id,email,token FROM devices WHERE strategy_enabled=1 AND uid IN ("+viewers.map(()=>"?").join(",")+")").bind(...viewers).all();
       const eventKey=user.uid+":"+body.postId+":"+fieldString(post,"updatedAt");
-      const inserted=await env.DB.prepare("INSERT OR IGNORE INTO sent_events(event_key,sent_at) VALUES(?,?)").bind(eventKey,now).run();
-      if(!inserted.meta?.changes)return json({ok:true,sent:0,duplicate:true},200,headers);
-      let sent=0;for(const device of recipients.results||[]){if(!await authorizedRecipient(device,env))continue;try{await send(env,device,"交易策略更新",fieldString(post,"title")+" · "+fieldString(post,"symbol"),eventKey,"./#sharing");sent++}catch(error){console.error(error?.message||error)}}
-      return json({ok:true,sent},200,headers);
+      let sent=0,failed=0,skipped=0,duplicate=0;const errors=[];
+      for(const device of recipients.results||[]){
+        const deliveryKey=eventKey+":"+device.uid+":"+device.device_id;
+        try{
+          if(!await authorizedRecipient(device,env,user)){skipped++;continue;}
+          const previous=await env.DB.prepare("SELECT event_key FROM sent_events WHERE event_key=?").bind(deliveryKey).first();
+          if(previous){duplicate++;continue;}
+          await send(env,device,"交易策略更新",fieldString(post,"title")+" · "+fieldString(post,"symbol"),eventKey,"./#sharing");
+          await env.DB.prepare("INSERT OR IGNORE INTO sent_events(event_key,sent_at) VALUES(?,?)").bind(deliveryKey,now).run();sent++;
+        }catch(error){failed++;errors.push(error?.message||"通知傳送失敗。");console.error(error?.message||error)}
+      }
+      return json({ok:failed===0,sent,failed,skipped,duplicate,errors:errors.slice(0,1),reason:!(recipients.results||[]).length?"no-enabled-devices":undefined},200,headers);
     }
     return json({error:"找不到通知路徑。"},404,headers);
   }catch(error){return json({error:error?.message||"通知處理失敗。"},400,headers)}
@@ -76,7 +91,7 @@ async function handle(request,env){
 export default {fetch:handle,async scheduled(event,env,ctx){
   ctx.waitUntil((async()=>{
     const today=taipeiDay(),rows=await env.DB.prepare("SELECT uid,device_id,email,token FROM devices WHERE daily_enabled=1 AND (last_opened_day IS NULL OR last_opened_day<>?) AND (daily_sent_day IS NULL OR daily_sent_day<>?)").bind(today,today).all();
-    for(const device of rows.results||[]){if(!await authorizedRecipient(device,env))continue;try{await send(env,device,"每日資產提醒","今天還沒開啟 Wealth Tracker，花一點時間檢視你的資產與策略。","daily:"+today+":"+device.uid,"./#home");await env.DB.prepare("UPDATE devices SET daily_sent_day=? WHERE uid=? AND device_id=?").bind(today,device.uid,device.device_id).run()}catch(error){console.error(error?.message||error)}}
+    for(const device of rows.results||[]){try{if(!await authorizedRecipient(device,env))continue;await send(env,device,"每日資產提醒","今天還沒開啟 Wealth Tracker，花一點時間檢視你的資產與策略。","daily:"+today+":"+device.uid,"./#home");await env.DB.prepare("UPDATE devices SET daily_sent_day=? WHERE uid=? AND device_id=?").bind(today,device.uid,device.device_id).run()}catch(error){console.error(error?.message||error)}}
     await env.DB.prepare("DELETE FROM sent_events WHERE sent_at < datetime('now','-30 days')").run();
   })())
 }};

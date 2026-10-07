@@ -36,3 +36,28 @@ test('notification registration stores the verified Firebase email and never bin
   assert.equal(values[2],'aaz52468599@gmail.com');
   assert.deepEqual(await response.json(),{ok:true});
 });
+
+test('failed strategy notifications can retry; successful devices deduplicate per strategy version',async(t)=>{
+  const {generateKeyPairSync}=await import('node:crypto');
+  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
+  let version='v2',fcmAttempts=0,fail=true;const events=new Set();
+  const doc=fields=>({fields});
+  t.mock.method(globalThis,'fetch',async(url)=>{
+    const path=String(url);
+    if(path.includes('accounts:lookup'))return Response.json({users:[{localId:'author',email:'aaz52468599@gmail.com',emailVerified:true}]});
+    if(path.includes('/strategies/'))return Response.json(doc({ownerUid:{stringValue:'author'},id:{stringValue:'p1'},published:{booleanValue:true},updatedAt:{stringValue:version},title:{stringValue:'Test'},symbol:{stringValue:'BTC'}}));
+    if(path.includes('/strategyAccess/'))return Response.json(doc({viewerUids:{arrayValue:{values:[{stringValue:'member'}]}}}));
+    if(path.includes('/access/'))return Response.json(doc({status:{stringValue:'approved'}}));
+    if(path.includes('oauth2.googleapis.com'))return Response.json({access_token:'test-service-token'});
+    if(path.includes('messages:send')){fcmAttempts++;return fail?Response.json({error:{status:'PERMISSION_DENIED'}},{status:403}):Response.json({name:'accepted'});}
+    throw new Error('Unexpected request '+path);
+  });
+  const DB={prepare(sql){let args;return {bind(...values){args=values;assert.ok(values.every(v=>v!==undefined));return this},async all(){return {results:[{uid:'member',device_id:'phone',email:'member@example.com',token:'test-device-token'}]}},async first(){return events.has(args[0])?{event_key:args[0]}:null},async run(){if(sql.startsWith('INSERT'))events.add(args[0]);return {meta:{changes:1}}}}}};
+  const testEnv={...env,DB,FIREBASE_API_KEY:'test-key',FIREBASE_PROJECT_ID:'test-project',FCM_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.com',private_key:privateKey})};
+  const request=()=>new Request('https://worker.example/strategy-event',{method:'POST',headers:{Origin:env.APP_ORIGIN,Authorization:'Bearer test-author-token','Content-Type':'application/json'},body:JSON.stringify({postId:'p1'})});
+  const failed=await (await worker.fetch(request(),testEnv)).json();assert.equal(failed.failed,1);assert.equal(failed.sent,0);assert.equal(events.size,0);
+  fail=false;
+  const retry=await (await worker.fetch(request(),testEnv)).json();assert.equal(retry.sent,1);assert.equal(retry.failed,0);assert.equal(events.size,1);
+  const repeat=await (await worker.fetch(request(),testEnv)).json();assert.equal(repeat.duplicate,1);assert.equal(fcmAttempts,2);
+  version='v3';const edited=await (await worker.fetch(request(),testEnv)).json();assert.equal(edited.sent,1);assert.equal(fcmAttempts,3);
+});
