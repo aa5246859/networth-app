@@ -16,6 +16,11 @@ export async function connect() {
 export const watchAuth=handler=>sdk.onAuthStateChanged(auth,handler);
 export const logout=()=>sdk.signOut(auth);
 export async function login() {
+  const ua=navigator.userAgent||"";
+  if(/GSA\//i.test(ua)){
+    const browser=/iPhone|iPad|iPod/i.test(ua)?"Safari":"Chrome";
+    throw new Error(`Google App 內建瀏覽器可能讓登入停在 Firebase 白色視窗。請點右下角「⋯」並選「在外部瀏覽器開啟」（iPhone 選 ${browser}），再登入。`);
+  }
   const provider=new sdk.GoogleAuthProvider();
   try{return await sdk.signInWithPopup(auth,provider);}catch(e){if(["auth/popup-blocked","auth/operation-not-supported-in-this-environment"].includes(e.code))return sdk.signInWithRedirect(auth,provider);throw e;}
 }
@@ -144,6 +149,15 @@ export async function invitations(user) {
     sdk.getDocs(sdk.query(c("shareInvites"),sdk.where("recipientEmail","==",user.email.toLowerCase())))
   ]);
   return {sent:sent.docs.map(s=>({...s.data(),id:s.id})),received:received.docs.map(s=>({...s.data(),id:s.id}))};
+}
+export function listenInvitations(user,next,error) {
+  let sent=[],received=[],sentLoaded=false,receivedLoaded=false;
+  const emit=()=>{if(sentLoaded&&receivedLoaded)next({sent,received});};
+  const map=snapshot=>snapshot.docs.map(item=>({...item.data(),id:item.id}));
+  return [
+    sdk.onSnapshot(sdk.query(c("shareInvites"),sdk.where("ownerUid","==",user.uid)),snapshot=>{sent=map(snapshot);sentLoaded=true;emit();},error),
+    sdk.onSnapshot(sdk.query(c("shareInvites"),sdk.where("recipientEmail","==",user.email.toLowerCase())),snapshot=>{received=map(snapshot);receivedLoaded=true;emit();},error)
+  ];
 }
 export async function acceptInvite(user,inviteId) {
   const ref=d("shareInvites",inviteId);
