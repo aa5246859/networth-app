@@ -513,3 +513,16 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .sr-teacher{border-top:1px solid var(--line);margin-top:16px;padding-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
 .sr-teacher .sr-actions{flex-basis:100%;margin-top:2px}
 .sr-teacher-result{font-size:12px;color:var(--muted);line-height:1.7;margin:12px 0 0;overflow-wrap:anywhere}
+
+
+/* Installed PWA only: a calm app bar, tactile tab dock, and native safe-area fit. */
+@media (display-mode:standalone) and (max-width:900px){
+  body{overscroll-behavior-y:none}
+  .topbar{position:sticky;top:0;z-index:30;background:rgba(16,22,20,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  .sidebar{background:rgba(16,22,20,.94);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:0 -8px 24px rgba(0,0,0,.18)}
+  nav{gap:3px}
+  nav button{min-height:64px;transition:background-color .16s ease,transform .16s ease}
+  nav button:active{transform:scale(.96)}
+  nav button.active{background:rgba(227,179,76,.1)}
+}
+@media (display-mode:standalone) and (max-width:900px) and (prefers-reduced-motion:reduce){nav button{transition:none}}
