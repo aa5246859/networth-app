@@ -191,6 +191,14 @@ export async function revoke(uid,viewerUid) {
     snaps.forEach((snap,i)=>{if(snap.exists())tx.update(refs[i],{viewerUids:snap.data().viewerUids.filter(v=>v!==viewerUid),updatedAt:new Date().toISOString()});});
   });
 }
+export function listenStrategyParticipation(ownerUid,postId,next,error){
+  const ref=c("strategyParticipation",ownerUid,"posts",postId,"members");
+  return sdk.onSnapshot(ref,snapshot=>next(snapshot.docs.map(item=>({...item.data(),uid:item.id}))),error);
+}
+export async function saveStrategyParticipation(user,ownerUid,postId,choice,strategyUpdatedAt){
+  if(!["participating","not-participating"].includes(choice))throw new Error("參與狀態無效。");
+  await sdk.setDoc(d("strategyParticipation",ownerUid,"posts",postId,"members",user.uid),{choice,strategyUpdatedAt,displayName:user.displayName||"使用者",photoURL:user.photoURL||"",updatedAt:new Date().toISOString()});
+}
 export async function strategies(ownerUid,own=false) {
   const ref=c("strategies",ownerUid,"posts");
   const snap=await sdk.getDocs(own?ref:sdk.query(ref,sdk.where("published","==",true)));return snap.docs.map(s=>({...s.data(),id:s.id}));
