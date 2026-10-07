@@ -1,4 +1,4 @@
-const CACHE="wealth-tracker-v2.4.21";
+const CACHE="wealth-tracker-v2.4.22";
 const SHELL=["./","./index.html","./styles.css","./app.js","./core.js","./quotes.js","./store.js","./review.js","./review-store.js","./backup.js","./config.js","./icons.js","./notifications.js","./manifest.json","./icon-192.png","./icon-512.png"];
 self.addEventListener("install",event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)));self.skipWaiting();});
 self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith("wealth-tracker-")||k.startsWith("qwjh-")).filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
@@ -18,9 +18,9 @@ self.addEventListener("push",event=>{
 self.addEventListener("notificationclick",event=>{
   event.notification.close();
   const target=new URL(event.notification.data?.url||"./#home",self.registration.scope).href;
-  event.waitUntil(self.clients.matchAll({type:"window",includeUncontrolled:true}).then(clients=>{
+  event.waitUntil(self.clients.matchAll({type:"window",includeUncontrolled:true}).then(async clients=>{
     const existing=clients.find(client=>client.url.startsWith(self.registration.scope));
-    if(existing){existing.navigate(target);return existing.focus();}
+    if(existing){const navigated=await existing.navigate(target);return (navigated||existing).focus();}
     return self.clients.openWindow(target);
   }));
 });

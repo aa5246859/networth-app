@@ -79,7 +79,7 @@ async function handle(request,env){
           if(!await authorizedRecipient(device,env,user)){skipped++;continue;}
           const previous=await env.DB.prepare("SELECT event_key FROM sent_events WHERE event_key=?").bind(deliveryKey).first();
           if(previous){duplicate++;continue;}
-          await send(env,device,"交易策略更新",fieldString(post,"title")+" · "+fieldString(post,"symbol"),eventKey,"./#sharing");
+          await send(env,device,"交易策略更新",fieldString(post,"title")+" · "+fieldString(post,"symbol"),eventKey,"./#sharing?"+new URLSearchParams({owner:user.uid,post:body.postId,term:fieldString(post,"term")||"long"}).toString());
           await env.DB.prepare("INSERT OR IGNORE INTO sent_events(event_key,sent_at) VALUES(?,?)").bind(deliveryKey,now).run();sent++;
         }catch(error){failed++;errors.push(error?.message||"通知傳送失敗。");console.error(error?.message||error)}
       }

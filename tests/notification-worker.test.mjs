@@ -40,16 +40,16 @@ test('notification registration stores the verified Firebase email and never bin
 test('failed strategy notifications can retry; successful devices deduplicate per strategy version',async(t)=>{
   const {generateKeyPairSync}=await import('node:crypto');
   const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
-  let version='v2',fcmAttempts=0,fail=true;const events=new Set();
+  let version='v2',fcmAttempts=0,fail=true;const events=new Set(),pushUrls=[];
   const doc=fields=>({fields});
-  t.mock.method(globalThis,'fetch',async(url)=>{
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
     const path=String(url);
     if(path.includes('accounts:lookup'))return Response.json({users:[{localId:'author',email:'aaz52468599@gmail.com',emailVerified:true}]});
-    if(path.includes('/strategies/'))return Response.json(doc({ownerUid:{stringValue:'author'},id:{stringValue:'p1'},published:{booleanValue:true},updatedAt:{stringValue:version},title:{stringValue:'Test'},symbol:{stringValue:'BTC'}}));
+    if(path.includes('/strategies/'))return Response.json(doc({ownerUid:{stringValue:'author'},id:{stringValue:'p1'},published:{booleanValue:true},updatedAt:{stringValue:version},title:{stringValue:'Test'},symbol:{stringValue:'BTC'},term:{stringValue:'short'}}));
     if(path.includes('/strategyAccess/'))return Response.json(doc({viewerUids:{arrayValue:{values:[{stringValue:'member'}]}}}));
     if(path.includes('/access/'))return Response.json(doc({status:{stringValue:'approved'}}));
     if(path.includes('oauth2.googleapis.com'))return Response.json({access_token:'test-service-token'});
-    if(path.includes('messages:send')){fcmAttempts++;return fail?Response.json({error:{status:'PERMISSION_DENIED'}},{status:403}):Response.json({name:'accepted'});}
+    if(path.includes('messages:send')){pushUrls.push(JSON.parse(options.body).message.data.url);fcmAttempts++;return fail?Response.json({error:{status:'PERMISSION_DENIED'}},{status:403}):Response.json({name:'accepted'});}
     throw new Error('Unexpected request '+path);
   });
   const DB={prepare(sql){let args;return {bind(...values){args=values;assert.ok(values.every(v=>v!==undefined));return this},async all(){return {results:[{uid:'member',device_id:'phone',email:'member@example.com',token:'test-device-token'}]}},async first(){return events.has(args[0])?{event_key:args[0]}:null},async run(){if(sql.startsWith('INSERT'))events.add(args[0]);return {meta:{changes:1}}}}}};
@@ -59,5 +59,5 @@ test('failed strategy notifications can retry; successful devices deduplicate pe
   fail=false;
   const retry=await (await worker.fetch(request(),testEnv)).json();assert.equal(retry.sent,1);assert.equal(retry.failed,0);assert.equal(events.size,1);
   const repeat=await (await worker.fetch(request(),testEnv)).json();assert.equal(repeat.duplicate,1);assert.equal(fcmAttempts,2);
-  version='v3';const edited=await (await worker.fetch(request(),testEnv)).json();assert.equal(edited.sent,1);assert.equal(fcmAttempts,3);
+  version='v3';const edited=await (await worker.fetch(request(),testEnv)).json();assert.equal(edited.sent,1);assert.equal(fcmAttempts,3);assert.ok(pushUrls.every(url=>url==='./#sharing?owner=author&post=p1&term=short'));
 });
