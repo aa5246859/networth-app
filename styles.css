@@ -190,7 +190,7 @@ main{padding:32px 0 48px;min-width:0}
 .share-asset-choice:last-child{border-bottom:0}
 .share-asset-choice>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
 .share-asset-choice .amount{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
-.contact{padding:14px 0;border-bottom:1px solid var(--line)}
+.share-details{border-top:1px solid var(--line);padding:2px 0}.share-details+.share-details{margin-top:10px}.share-details summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:8px 2px;cursor:pointer;list-style:none;font-weight:600}.share-details summary::-webkit-details-marker{display:none}.share-details summary::after{content:"⌄";color:var(--gold);font-size:18px;margin-left:auto}.share-details[open] summary::after{content:"⌃"}.share-details-body{padding:0 2px 8px}.share-details-body>.contact:last-child{border-bottom:0}.contact{padding:14px 0;border-bottom:1px solid var(--line)}
 .contact:last-child{border-bottom:0}
 .contact-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .contact-name{font-size:14px;overflow-wrap:anywhere;min-width:0}
