@@ -546,3 +546,11 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 @media(max-width:900px){.asset-display-toggle{margin-top:-4px}.asset-table .aggregate-detail-row{display:block;padding:0;border-top:0}.asset-table .aggregate-detail-row td{display:block;grid-column:1/-1;width:100%}.aggregate-lot{grid-template-columns:minmax(0,1fr) minmax(90px,auto);gap:10px}.aggregate-lot .table-actions{grid-column:1/-1;justify-content:flex-start}.aggregate-lot .table-actions button{width:40px;min-height:40px}.asset-table .aggregate-row td.action-cell{align-self:start;padding-top:0}.asset-table .aggregate-row .value-cell{padding-left:44px}.asset-table.readonly .aggregate-row{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:370px){.asset-display-toggle{align-items:flex-start;flex-direction:column}.asset-table .aggregate-row .value-cell{padding-left:0}.aggregate-details{padding:12px}}
 .notification-options{display:grid;gap:8px;margin:18px 0}.notification-options .checkbox-row{min-height:48px}.notification-options input:disabled{opacity:.5}
+
+/* Mobile buying average for personal and shared holdings. */
+.asset-cost-mobile{display:none}
+@media(max-width:900px){
+  .asset-cost-mobile{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin-top:8px;font-size:13px;line-height:1.6;color:var(--muted)}
+  .asset-cost-mobile .mono{color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+  .aggregate-cost-inline{display:none}
+}
