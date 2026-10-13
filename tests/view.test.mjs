@@ -14,7 +14,7 @@ const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replac
 function harness(code=source,overrides={}){
   const nodes=new Map();
   for(const match of html.matchAll(/id="([^"]+)"/g)){
-    const classes=new Set();nodes.set(match[1],{dataset:{},textContent:'',innerHTML:'',open:false,className:'',classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>{if(on)classes.add(v);else classes.delete(v);},contains:v=>classes.has(v)},addEventListener(){},close(){this.open=false;},showModal(){this.open=true;},elements:new Proxy({}, {get:(o,k)=>o[k]||(o[k]={value:'',checked:false})}),reset(){}});
+    const classes=new Set();nodes.set(match[1],{dataset:{},textContent:'',innerHTML:'',open:false,className:'',classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>{if(on)classes.add(v);else classes.delete(v);},contains:v=>classes.has(v)},addEventListener(){},setAttribute(){},close(){this.open=false;},showModal(){this.open=true;},elements:new Proxy({}, {get:(o,k)=>o[k]||(o[k]={value:'',checked:false})}),reset(){}});
   }
   const calls=[];
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});

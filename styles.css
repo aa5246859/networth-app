@@ -554,3 +554,12 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
   .asset-cost-mobile .mono{color:var(--ink);font-weight:500;overflow-wrap:anywhere}
   .aggregate-cost-inline{display:none}
 }
+
+/* Clear progress while Google login and profile loading are in flight. */
+.login-progress{margin:0 0 16px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);text-align:left}
+.login-progress-title{color:var(--ink);font-size:15px;font-weight:600;line-height:1.5}
+.login-progress-detail{margin-top:5px;color:var(--muted);font-size:13px;line-height:1.7}
+#loginButton[aria-busy="true"]{opacity:1;gap:9px;cursor:wait}
+.login-button-spinner{display:inline-block;width:17px;height:17px;flex:0 0 17px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:login-progress-spin .85s linear infinite}
+@keyframes login-progress-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.login-button-spinner{animation:none}}
