@@ -468,6 +468,13 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .summary-method svg{width:12px;height:12px;transform:rotate(90deg)}
 .summary-method[open] svg{transform:rotate(270deg)}
 .summary-method p{padding-top:4px;line-height:1.8;overflow-wrap:anywhere}
+.summary-explanation{margin-top:8px;text-align:left}
+.summary-explanation dl{display:grid;gap:7px;margin:0 0 10px}
+.summary-explanation dl>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.summary-explanation dt{color:var(--muted)}
+.summary-explanation dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
+.summary-explanation p+p{margin-top:8px}
+.quote-refresh-error{display:block;color:var(--gold);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
 .summary-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding-top:18px;margin-top:auto}
 .summary-updated{display:flex;flex-direction:column;gap:2px;color:var(--muted);font-size:12px;min-width:0;line-height:1.6}
 .summary-updated>.mono{color:var(--ink);font-size:13px}

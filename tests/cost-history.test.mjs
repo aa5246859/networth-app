@@ -7,6 +7,26 @@ const quote={nativePrice:0.25,fx:32,fetchedAt:'2026-10-16T13:35:00Z',error:''};
 const reward={id:'reward',mode:'crypto',name:'ADA 質押獎勵',symbol:'ADA',qty:100,costPer:0,costFx:null,quote};
 const realized=(amount=-500000)=>parseAsset({mode:'manual',manualKind:'realized',name:'App 建立前的損益',realizedPnl:String(amount)});
 
+test('100 originally invested, 20 previously lost and remaining holdings worth 60 shows 100 principal and -40 total return',()=>{
+  const p=portfolio([{id:'current',mode:'manual',value:60,cost:80},realized(-20)]);
+  assert.equal(p.total,60);assert.equal(p.invested,100);assert.equal(p.overallPnl,-40);assert.equal(p.overallPercent,-40);
+  assert.equal(p.total-p.invested,p.overallPnl);
+});
+
+test('reinvested realized gains and added cash are counted once in net invested principal',()=>{
+  const positions=[{id:'current',mode:'manual',value:140,cost:120},realized(20)];
+  const p=portfolio(positions);assert.equal(p.invested,100);assert.equal(p.overallPnl,40);assert.equal(p.overallPercent,40);
+  const withDeposit=portfolio([...positions,{id:'new-cash',mode:'manual',value:30,cost:30}]);
+  assert.equal(withDeposit.invested,130);assert.equal(withDeposit.total,170);assert.equal(withDeposit.overallPnl,40);
+  assert.equal(portfolio([{mode:'manual',value:60,cost:60},realized(20)]).invested,40);
+});
+
+test('missing costs never produce a complete overall percentage and zero invested principal does not divide by zero',()=>{
+  const missing=portfolio([{mode:'manual',value:60,cost:null},realized(-20)]);
+  assert.equal(missing.costComplete,false);assert.equal(missing.pnlComplete,false);assert.equal(missing.overallPercent,null);
+  const free=portfolio([reward]);assert.equal(free.invested,0);assert.equal(free.overallPnl,800);assert.equal(free.overallPercent,null);
+});
+
 test('zero cost is known while blank, null, missing and invalid costs remain unknown',()=>{
   for(const raw of [0,'0','0.000'])assert.equal(costAmount(raw),0);
   for(const raw of [null,undefined,'','   ',-1,'bad'])assert.equal(costAmount(raw),null);

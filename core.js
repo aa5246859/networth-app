@@ -60,7 +60,11 @@ export function portfolio(assets) {
   const realizedPnl = realized.reduce((sum,a) => sum + a.realizedPnl, 0);
   const cumulativePnl = finite(pnl) ? pnl + realizedPnl : realized.length ? realizedPnl : null;
   const estimatedCost = costed.filter(a => a.currency === "USD" && positive(costAmount(a.asset.costPer)) && !positive(+a.asset.costFx)).length;
-  return {total,cost,pnl,pnlCost,percent:pnlCost > 0 && finite(pnl) ? pnl / pnlCost * 100 : null,count:included.length,costCount:costed.length,covered:covered.length,estimatedCost,realizedPnl,realizedCount:realized.length,cumulativePnl,stale:included.filter(a=>a.stale || a.missing).length};
+  const invested = costed.length || realized.length ? cost - realizedPnl : null;
+  const costComplete = costed.length === included.length;
+  const pnlComplete = covered.length === included.length;
+  const overallPercent = costComplete && pnlComplete && positive(invested) && finite(cumulativePnl) ? cumulativePnl / invested * 100 : null;
+  return {total,cost,pnl,pnlCost,percent:pnlCost > 0 && finite(pnl) ? pnl / pnlCost * 100 : null,count:included.length,costCount:costed.length,covered:covered.length,estimatedCost,realizedPnl,realizedCount:realized.length,cumulativePnl,invested,costComplete,pnlComplete,overallPnl:cumulativePnl,overallPercent,stale:included.filter(a=>a.stale || a.missing).length};
 }
 
 export function aggregateHoldings(assets) {

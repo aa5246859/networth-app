@@ -23,13 +23,13 @@ function harness(code=source,overrides={}){
   const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews});',context);
   return {api,nodes,calls};
 }
-test('overview distinguishes current holding cost, floating P&L and prior realized losses',()=>{
+test('overview shows principal and overall return while keeping the breakdown collapsed',()=>{
   const {api,nodes}=harness();
   api.s.page='home';api.s.assets=[{id:'cash',name:'Cash',mode:'manual',value:2500000,cost:2500000},{id:'old',name:'以前的虧損',mode:'manual',recordKind:'realized',realizedPnl:-500000,value:0,cost:null}];api.render();
   const view=nodes.get('content').innerHTML;
-  assert.match(view,/持倉總成本/);assert.match(view,/NT\$ 2,500,000/);assert.match(view,/歷史已實現/);assert.match(view,/累計損益/);assert.match(view,/−500,000/);
-  assert.match(view,/1 個持倉/);assert.ok(!view.includes('2,000,000'));
-  api.s.assets[0].cost=null;api.render();assert.match(nodes.get('content').innerHTML,/已填成本/);assert.match(nodes.get('content').innerHTML,/已知累計損益/);
+  assert.match(view,/總投入本金/);assert.match(view,/NT\$ 3,000,000/);assert.match(view,/總損益/);assert.match(view,/−500,000/);assert.ok(!view.includes('class="summary-ledger"'));assert.match(view,/<details class="summary-method">/);
+  assert.match(view,/1 \/ 1 筆已填成本/);assert.ok(!view.includes('2,000,000'));
+  api.s.assets[0].cost=null;api.render();assert.match(nodes.get('content').innerHTML,/已知投入本金/);assert.match(nodes.get('content').innerHTML,/已知總損益/);
 });
 test('zero cost renders as a known average in both owner and shared holdings',()=>{
   const {api}=harness();const asset={id:'reward',name:'質押獎勵',mode:'crypto',symbol:'ADA',qty:100,costPer:0,quote:{nativePrice:0.25,fx:32,fetchedAt:'2026-10-16'}};
