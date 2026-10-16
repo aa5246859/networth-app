@@ -1,6 +1,8 @@
 export const TYPES = { manual: "手動資產", crypto: "加密貨幣", tw: "台股", stock: "美股", usd: "美元資產" };
 export const finite = value => typeof value === "number" && Number.isFinite(value);
 export const positive = value => finite(value) && value > 0;
+export const costAmount = value => value == null || String(value).trim() === "" ? null : finite(+value) && +value >= 0 ? +value : null;
+export const isRealized = asset => asset.mode === "manual" && asset.recordKind === "realized";
 export const id = () => crypto.randomUUID();
 export const taipeiDay = (date = new Date()) => new Intl.DateTimeFormat("sv-SE", {timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(date);
 export const stamp = value => {
@@ -25,6 +27,7 @@ export function normalizeAsset(old, legacyQuotes = {}) {
 }
 
 export function valuation(a) {
+  if (isRealized(a)) return {value:0,nativeValue:0,currency:"TWD",price:null,fx:1,cost:null,pnl:null,pnlNative:null,percent:null,kind:"歷史已實現損益",missing:false,stale:false,excluded:true};
   const manual = a.mode === "manual", tw = a.mode === "tw";
   const currency = manual || tw ? "TWD" : "USD";
   const qty = +a.qty || 0;
@@ -33,24 +36,31 @@ export function valuation(a) {
   const nativeValue = manual ? (+a.value || 0) : positive(price) ? price * qty : null;
   const calculated = finite(nativeValue) && positive(fx);
   const value = calculated ? nativeValue * fx : finite(a.legacyValue) ? a.legacyValue : null;
-  const costNative = manual ? (positive(+a.cost) ? +a.cost : null) : positive(+a.costPer) ? +a.costPer * (a.mode === "usd" ? 1 : qty) : null;
-  const fixedCost = positive(+a.costFx) && positive(costNative) ? costNative * +a.costFx : null;
-  let cost = currency === "TWD" ? costNative : fixedCost ?? (positive(fx) && positive(costNative) ? costNative * fx : null);
+  const recordedCost = costAmount(manual ? a.cost : a.costPer);
+  const costNative = finite(recordedCost) ? recordedCost * (manual || a.mode === "usd" ? 1 : qty) : null;
+  const fixedCost = positive(+a.costFx) && finite(costNative) ? costNative * +a.costFx : null;
+  let cost = currency === "TWD" ? costNative : costNative === 0 ? 0 : fixedCost ?? (positive(fx) && finite(costNative) ? costNative * fx : null);
   // Older manual-total cost records are preserved when no native cost exists.
-  if (!positive(costNative) && positive(+a.cost)) cost = +a.cost;
-  const pnl = calculated && finite(value) && positive(cost) ? value - cost : null;
-  const pnlNative = finite(nativeValue) && positive(costNative) ? nativeValue - costNative : null;
+  if (!finite(costNative) && finite(costAmount(a.cost))) cost = costAmount(a.cost);
+  const pnl = calculated && finite(value) && finite(cost) ? value - cost : null;
+  const pnlNative = finite(nativeValue) && finite(costNative) ? nativeValue - costNative : null;
   const kind = currency === "USD" && positive(costNative) && !positive(+a.costFx) ? "價差損益・未計匯差" : "浮動損益";
   return {value, nativeValue, currency, price, fx, cost, pnl, pnlNative, percent:positive(cost) && finite(pnl) ? pnl / cost * 100 : null, kind, missing:!calculated, stale:!manual && (!!a.quote?.error || !a.quote?.fetchedAt), excluded:a.isSummary === true};
 }
 
 export function portfolio(assets) {
-  const included = assets.filter(a => !a.isSummary).map(a => ({asset:a,...valuation(a)}));
+  const included = assets.filter(a => !a.isSummary && !isRealized(a)).map(a => ({asset:a,...valuation(a)}));
   const covered = included.filter(a => finite(a.pnl));
+  const costed = included.filter(a => finite(a.cost));
   const total = included.reduce((sum,a) => sum + (a.value ?? 0), 0);
-  const cost = covered.reduce((sum,a) => sum + a.cost, 0);
+  const cost = costed.reduce((sum,a) => sum + a.cost, 0);
+  const pnlCost = covered.reduce((sum,a) => sum + a.cost, 0);
   const pnl = covered.length ? covered.reduce((sum,a) => sum + a.pnl, 0) : null;
-  return {total,cost,pnl,percent:cost > 0 && finite(pnl) ? pnl / cost * 100 : null,count:included.length,covered:covered.length,stale:included.filter(a=>a.stale || a.missing).length};
+  const realized = assets.filter(a => isRealized(a) && finite(a.realizedPnl));
+  const realizedPnl = realized.reduce((sum,a) => sum + a.realizedPnl, 0);
+  const cumulativePnl = finite(pnl) ? pnl + realizedPnl : realized.length ? realizedPnl : null;
+  const estimatedCost = costed.filter(a => a.currency === "USD" && positive(costAmount(a.asset.costPer)) && !positive(+a.asset.costFx)).length;
+  return {total,cost,pnl,pnlCost,percent:pnlCost > 0 && finite(pnl) ? pnl / pnlCost * 100 : null,count:included.length,costCount:costed.length,covered:covered.length,estimatedCost,realizedPnl,realizedCount:realized.length,cumulativePnl,stale:included.filter(a=>a.stale || a.missing).length};
 }
 
 export function aggregateHoldings(assets) {
@@ -69,7 +79,7 @@ export function aggregateHoldings(assets) {
     const quantity=lots.reduce((sum,asset)=>sum+(+asset.qty||0),0);
     const valued=values.filter(item=>finite(item.value.value));
     const costed=values.filter(item=>finite(item.value.pnl)&&finite(item.value.cost));
-    const nativeCosted=lots.filter(asset=>positive(+asset.costPer)&&positive(+asset.qty));
+    const nativeCosted=lots.filter(asset=>finite(costAmount(asset.costPer))&&positive(+asset.qty));
     const nativeCostQty=nativeCosted.reduce((sum,asset)=>sum+(+asset.qty||0),0);
     const cost=costed.reduce((sum,item)=>sum+item.value.cost,0);
     const pnl=costed.length?costed.reduce((sum,item)=>sum+item.value.pnl,0):null;
@@ -102,7 +112,7 @@ export function requiredRates(assets, settings, now = new Date()) {
 
 // Explicit allowlist: credentials, settings, history and unselected assets never enter a shared document.
 export function sharedAsset(a) {
-  const keys=["id","name","mode","type","symbol","qty","value","legacyValue","cost","costPer","costFx","isSummary","quote","updatedAt"];
+  const keys=["id","name","mode","type","symbol","qty","value","legacyValue","cost","costPer","costFx","isSummary","recordKind","realizedPnl","quote","updatedAt"];
   const result=Object.fromEntries(keys.filter(k=>a[k]!==undefined).map(k=>[k,structuredClone(a[k])]));
   if(result.quote){const allowed=["nativePrice","fx","currency","source","priceAt","fetchedAt","fxAt","fxFetchedAt","error","lastAttemptAt"];result.quote=Object.fromEntries(allowed.filter(k=>result.quote[k]!==undefined).map(k=>[k,result.quote[k]]));}
   return result;
@@ -116,13 +126,20 @@ export function parseAsset(fields, previous = null) {
   const mode=fields.mode;
   if (!(mode in TYPES)) throw new Error("請選擇資產類型");
   const toNumber = (raw, title, required=false) => {
-    if (raw === "" || raw == null) {if(required) throw new Error("請填"+title); return null;}
+    if (raw == null || String(raw).trim() === "") {if(required) throw new Error("請填"+title); return null;}
     const value=Number(raw); if(!finite(value) || value<0) throw new Error(title+"需為有效的非負數字"); return value;
   };
   const name=fields.name.trim() || fields.symbol?.trim().toUpperCase() || (mode==="usd" ? "美元資產" : "");
   if(!name || name.length>80) throw new Error("名稱需為 1～80 個字");
   const a={id:previous?.id || id(),name,mode,type:mode==="manual"?fields.type:TYPES[mode],symbol:null,qty:null,cost:null,costPer:null,costFx:null,isSummary:mode==="usd"&&fields.isSummary===true,createdAt:previous?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
-  if(mode==="manual") {a.value=toNumber(fields.value,"目前價值",true);a.cost=toNumber(fields.cost,"台幣本金");return a;}
+  if(mode==="manual") {
+    if(fields.manualKind==="realized" || fields.recordKind==="realized") {
+      const raw=fields.realizedPnl;
+      if(raw==null || String(raw).trim()==="" || !finite(Number(raw))) throw new Error("請填有效的歷史損益；虧損填負數，例如 -500000");
+      a.recordKind="realized";a.realizedPnl=Number(raw);a.value=0;a.type="歷史已實現損益";
+    } else {a.value=toNumber(fields.value,"目前價值",true);a.cost=toNumber(fields.cost,"台幣本金");}
+    return a;
+  }
   a.qty=toNumber(fields.qty,mode==="usd"?"美元金額":"持有數量",true);
   if(!positive(a.qty)) throw new Error("數量或金額需大於 0");
   if(mode!=="usd") {a.symbol=fields.symbol.trim();if(!a.symbol || !/^[A-Za-z0-9.^_-]{1,80}$/.test(a.symbol)) throw new Error("請填有效的代號"); if(mode!=="tw") a.symbol=a.symbol.toUpperCase();}
@@ -132,3 +149,4 @@ export function parseAsset(fields, previous = null) {
   if(previous?.mode===mode && previous?.symbol===a.symbol) {a.quote=previous.quote;a.legacyValue=previous.legacyValue;}
   return a;
 }
+

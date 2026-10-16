@@ -28,4 +28,13 @@ test('new account loads empty personal records and defaults without copying anot
 
 test('strategy participation saves caller choice and updates its live listener',async()=>{const {api,docs}=harness();const user={uid:'viewer',displayName:'小明',photoURL:'https://lh3.googleusercontent.com/a'};let rows=[];const unsubscribe=api.listenStrategyParticipation('owner','post',value=>{rows=value;});await api.saveStrategyParticipation(user,'owner','post','participating','revision-1');assert.equal(docs.get('strategyParticipation/owner/posts/post/members/viewer').choice,'participating');assert.equal(rows.length,1);assert.equal(rows[0].uid,'viewer');assert.equal(rows[0].strategyUpdatedAt,'revision-1');await api.saveStrategyParticipation(user,'owner','post','not-participating','revision-1');assert.equal(rows.length,1);assert.equal(rows[0].choice,'not-participating');unsubscribe();await assert.rejects(api.saveStrategyParticipation(user,'owner','post','approve','revision-1'),/參與狀態無效/);});
 
+test('historical loss edits replace the existing record and keep its shared projection in sync',async()=>{
+  const old={id:'old-loss',name:'過往虧損',mode:'manual',value:0,cost:500000,symbol:null,updatedAt:'one'};
+  const {api,docs}=harness({'users/u/assets/old-loss':old,'sharedPortfolios/u':{assets:[sharedAsset(old)],viewerUids:['v']}});
+  const saved=await api.saveAsset('u',{...old,cost:null,recordKind:'realized',realizedPnl:-500000,updatedAt:'two'},'one');
+  assert.equal(saved.value,0);assert.equal(saved.realizedPnl,-500000);assert.equal(docs.get('users/u/assets/old-loss').cost,null);
+  const shared=docs.get('sharedPortfolios/u').assets;assert.equal(shared.length,1);assert.equal(shared[0].recordKind,'realized');assert.equal(shared[0].realizedPnl,-500000);
+});
+
+
 

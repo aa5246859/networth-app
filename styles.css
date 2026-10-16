@@ -250,6 +250,7 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .modal-heading .icon-button:focus-visible{outline:none;box-shadow:none}
 .modal-heading .icon-button:focus-visible::before{border-color:#718078;box-shadow:0 0 0 1px var(--surface)}
 .form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:14px}
+#assetForm.history-record>.form-grid:not(.values-grid){grid-template-columns:minmax(0,1fr)}
 .callout{padding:16px;background:var(--surface2);border-radius:10px;font-size:14px;line-height:1.9;color:var(--muted);margin-top:18px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 .modal-actions .button{min-width:100px}
@@ -449,6 +450,12 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .summary-amount{text-align:center;font-size:clamp(38px,3.8vw,52px);font-weight:650;letter-spacing:-1.3px;line-height:1.15;margin-top:22px;overflow-wrap:anywhere}
 .summary-amount.long-amount{font-size:clamp(28px,2.7vw,38px);letter-spacing:-.6px}
 .summary-holdings{text-align:center;font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6}
+.summary-cost{display:flex;justify-content:center;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:14px;max-width:100%;color:var(--muted);font-size:13px;line-height:1.6}
+.summary-cost strong{min-width:0;color:var(--ink);font-size:16px;font-weight:500;overflow-wrap:anywhere}
+.summary-ledger{display:grid;gap:8px;margin:16px auto 0;width:fit-content;max-width:100%;font-size:12px;line-height:1.6}
+.summary-ledger>div{display:grid;grid-template-columns:auto minmax(0,auto);align-items:baseline;gap:8px 18px;min-width:0}
+.summary-ledger dt{color:var(--muted);text-align:left}
+.summary-ledger dd{margin:0;min-width:0;font-size:16px;text-align:right;overflow-wrap:anywhere}
 .summary-return{margin:20px 0;padding:0;border:0;border-radius:0;background:none;text-align:center}
 .summary-return-label{font-size:13px;color:var(--muted);margin-bottom:7px}
 .summary-pnl{font-size:25px;font-weight:500;line-height:1.3;overflow-wrap:anywhere}
@@ -563,3 +570,4 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .login-button-spinner{display:inline-block;width:17px;height:17px;flex:0 0 17px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:login-progress-spin .85s linear infinite}
 @keyframes login-progress-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.login-button-spinner{animation:none}}
+

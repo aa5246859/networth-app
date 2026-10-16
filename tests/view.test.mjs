@@ -14,15 +14,35 @@ const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replac
 function harness(code=source,overrides={}){
   const nodes=new Map();
   for(const match of html.matchAll(/id="([^"]+)"/g)){
-    const classes=new Set();nodes.set(match[1],{dataset:{},textContent:'',innerHTML:'',open:false,className:'',classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>{if(on)classes.add(v);else classes.delete(v);},contains:v=>classes.has(v)},addEventListener(){},setAttribute(){},close(){this.open=false;},showModal(){this.open=true;},elements:new Proxy({}, {get:(o,k)=>o[k]||(o[k]={value:'',checked:false})}),reset(){}});
+    const classes=new Set();nodes.set(match[1],{dataset:{},textContent:'',innerHTML:'',open:false,className:'',classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>{if(on)classes.add(v);else classes.delete(v);},contains:v=>classes.has(v)},addEventListener(){},setAttribute(){},querySelector(){return this.submit||(this.submit={textContent:"儲存持倉"});},close(){this.open=false;},showModal(){this.open=true;},elements:new Proxy({}, {get:(o,k)=>o[k]||(o[k]={value:'',checked:false})}),reset(){}});
   }
   const calls=[];
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
   const notifications={notificationStatus:()=>({configured:false,permission:'default',prefs:{strategy:true,daily:true},subscribed:false}),appOpened:async()=>{},strategyPublished:async()=>{},enableNotifications:async()=>{},disableNotifications:async()=>{},updateNotificationPreferences:async()=>{}};
   const context={...review,...core,...backup,VERSION,DEFAULT_SETTINGS,icon,cloud,notifications,refreshMarket:()=>{throw new Error('Demo must never call a market API');},document:{getElementById:name=>{if(!nodes.has(name))throw new Error('Missing element: '+name);return nodes.get(name);},querySelectorAll:()=>[],addEventListener(){},body:{classList:{add(){},remove(){}}}},window:{addEventListener(){},scrollTo(){}},location:{search:'?demo=1',hash:''},navigator:{},URLSearchParams,URL,crypto:webcrypto,structuredClone,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},console,...overrides};
-  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews});',context);
+  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews});',context);
   return {api,nodes,calls};
 }
+test('overview distinguishes current holding cost, floating P&L and prior realized losses',()=>{
+  const {api,nodes}=harness();
+  api.s.page='home';api.s.assets=[{id:'cash',name:'Cash',mode:'manual',value:2500000,cost:2500000},{id:'old',name:'以前的虧損',mode:'manual',recordKind:'realized',realizedPnl:-500000,value:0,cost:null}];api.render();
+  const view=nodes.get('content').innerHTML;
+  assert.match(view,/持倉總成本/);assert.match(view,/NT\$ 2,500,000/);assert.match(view,/歷史已實現/);assert.match(view,/累計損益/);assert.match(view,/−500,000/);
+  assert.match(view,/1 個持倉/);assert.ok(!view.includes('2,000,000'));
+  api.s.assets[0].cost=null;api.render();assert.match(nodes.get('content').innerHTML,/已填成本/);assert.match(nodes.get('content').innerHTML,/已知累計損益/);
+});
+test('zero cost renders as a known average in both owner and shared holdings',()=>{
+  const {api}=harness();const asset={id:'reward',name:'質押獎勵',mode:'crypto',symbol:'ADA',qty:100,costPer:0,quote:{nativePrice:0.25,fx:32,fetchedAt:'2026-10-16'}};
+  for(const editable of [true,false]){const view=api.assetRows([asset],editable);assert.match(view,/平均買入/);assert.match(view,/0 USD \/ 顆/);assert.match(view,/\+800/);assert.ok(!view.includes('成本未填'));}
+  const lots=[asset,{...asset,id:'second'}];const view=api.assetRows(lots,false);assert.match(view,/0 USD \/ 顆/);assert.ok(!view.includes('已填成本均價'));
+});
+test('historical record editor exposes a signed amount and hides current value and purchase cost',()=>{
+  const {api,nodes}=harness();api.s.assets=[{id:'loss',mode:'manual',name:'之前的虧損',recordKind:'realized',realizedPnl:-500000,value:0,cost:null}];api.openAsset('loss');
+  const form=nodes.get('assetForm');assert.equal(form.elements.manualKind.value,'realized');assert.equal(form.elements.realizedPnl.value,-500000);
+  assert.equal(nodes.get('valueField').classList.contains('hidden'),true);assert.equal(nodes.get('manualCostField').classList.contains('hidden'),true);
+  assert.equal(nodes.get('realizedPnlField').classList.contains('hidden'),false);assert.equal(nodes.get('assetDialogTitle').textContent,'編輯歷史損益');
+  const amount=html.match(/<input name="realizedPnl"[^>]*>/)[0];assert.ok(!amount.includes('min='));assert.ok(amount.includes('inputmode="text"'));
+});
 test("asset and strategy dialogs use a consistent accessible close icon without the oversized gold focus ring",()=>{const buttons=[...html.matchAll(/data-close="(assetDialog|strategyDialog)" aria-label="關閉">([\s\S]*?)<\/button>/g)];assert.equal(buttons.length,2);for(const button of buttons)assert.match(button[2],/<svg viewBox="0 0 24 24"/);assert.match(styles,/\.modal-heading \.icon-button\{[^}]*min-width:44px[^}]*min-height:44px/);assert.match(styles,/\.modal-heading \.icon-button::before\{content:"";position:absolute;inset:5px/);assert.match(styles,/\.modal-heading \.icon-button:focus-visible\{outline:none/);});
 test("manual quote refresh is never delayed by the previous refresh timestamp",async()=>{const {api,nodes}=harness();api.s.demo=true;api.s.user={uid:"demo-self",displayName:"小陽",email:"demo@example.com"};api.s.assets=[{id:"mstr",name:"MSTR",mode:"stock",symbol:"MSTR",qty:10,quote:{nativePrice:100,fx:32,fetchedAt:"2026-10-05T00:00:00Z",error:""}}];api.s.lastRefresh=Date.now();await api.refreshOwn(true);assert.match(nodes.get("toast").textContent,/示範行情已更新/);assert.equal(api.s.refreshing,false);});
 test('demo initializes all five views without touching Firebase or external quotes',()=>{const {api,nodes,calls}=harness();assert.equal((nodes.get('navigation').innerHTML.match(/data-page=/g)||[]).length,5);for(const page of ['home','assets','sharing','history','settings']){api.s.page=page;api.render(true);assert.ok(nodes.get('content').innerHTML.length>100);assert.ok(!nodes.get('content').innerHTML.includes('NaN'));}assert.equal(calls.length,0);});
@@ -110,3 +130,4 @@ test('consolidated holdings sort by combined market value',()=>{
   const lots=[{id:'btc1',name:'BTC one',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'btc2',name:'BTC two',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'mstr',name:'MSTR',mode:'stock',symbol:'MSTR',qty:1,quote:q}];
   const html=api.assetRows(lots);assert.ok(html.indexOf('BTC · 整合 2 筆')<html.indexOf('MSTR · 美股'));
 });
+
