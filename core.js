@@ -4,12 +4,20 @@ export const positive = value => finite(value) && value > 0;
 export const costAmount = value => value == null || String(value).trim() === "" ? null : finite(+value) && +value >= 0 ? +value : null;
 export const isRealized = asset => asset.mode === "manual" && asset.recordKind === "realized";
 export const id = () => crypto.randomUUID();
-export const taipeiDay = (date = new Date()) => new Intl.DateTimeFormat("sv-SE", {timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(date);
+// Formatters are immutable: reuse their setup while formatting each fresh value.
+const dayFormatter = new Intl.DateTimeFormat("sv-SE", {timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"});
+const timeFormatter = new Intl.DateTimeFormat("zh-TW", {timeZone:"Asia/Taipei",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+const numberFormatters = new Map();
+export const taipeiDay = (date = new Date()) => dayFormatter.format(date);
 export const stamp = value => {
   const date = new Date(value);
-  return value && finite(date.getTime()) ? new Intl.DateTimeFormat("zh-TW", {timeZone:"Asia/Taipei",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(date) : "時間未確認";
+  return value && finite(date.getTime()) ? timeFormatter.format(date) : "時間未確認";
 };
-export const num = (value, digits = 2) => finite(value) ? value.toLocaleString("zh-TW", {maximumFractionDigits:digits}) : "—";
+export const num = (value, digits = 2) => {
+  if (!finite(value)) return "—";
+  if (!numberFormatters.has(digits)) numberFormatters.set(digits, new Intl.NumberFormat("zh-TW", {maximumFractionDigits:digits}));
+  return numberFormatters.get(digits).format(value);
+};
 export const money = value => finite(value) ? "NT$ " + num(value, 0) : "—";
 export const compact = value => Math.abs(value) >= 1e8 ? num(value / 1e8, 2) + " 億" : num(value / 1e4, 1) + " 萬";
 export const signed = value => finite(value) ? (value > 0 ? "+" : value < 0 ? "−" : "") + num(Math.abs(value), 0) : "—";

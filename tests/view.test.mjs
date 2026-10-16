@@ -36,6 +36,34 @@ test('zero cost renders as a known average in both owner and shared holdings',()
   for(const editable of [true,false]){const view=api.assetRows([asset],editable);assert.match(view,/平均買入/);assert.match(view,/0 USD \/ 顆/);assert.match(view,/\+800/);assert.ok(!view.includes('成本未填'));}
   const lots=[asset,{...asset,id:'second'}];const view=api.assetRows(lots,false);assert.match(view,/0 USD \/ 顆/);assert.ok(!view.includes('已填成本均價'));
 });
+test('financial refreshes retain navigation and avatar DOM while page and profile changes still update them',()=>{
+  const {api,nodes}=harness(),writes={navigation:0,userAvatar:0};
+  for(const name of Object.keys(writes)){
+    const node=nodes.get(name);let html=node.innerHTML;
+    Object.defineProperty(node,'innerHTML',{get:()=>html,set:value=>{html=value;writes[name]++;}});
+  }
+  const before=nodes.get('content').innerHTML;
+  api.s.assets[0].quote.nativePrice+=10;api.render();api.render(true);
+  assert.notEqual(nodes.get('content').innerHTML,before);
+  assert.deepEqual(writes,{navigation:0,userAvatar:0});
+  api.s.page='assets';api.render();assert.deepEqual(writes,{navigation:1,userAvatar:0});
+  api.s.user.photoURL='https://lh3.googleusercontent.com/a/new-photo';api.render();
+  assert.deepEqual(writes,{navigation:1,userAvatar:1});assert.match(nodes.get('userAvatar').innerHTML,/new-photo/);
+  api.s.user={uid:'another-account',displayName:'另一位使用者'};api.render();
+  assert.deepEqual(writes,{navigation:1,userAvatar:2});assert.equal(nodes.get('userAvatar').innerHTML,'另');
+});
+test('sorting and rendering always use new quantities, prices and costs after an earlier render',()=>{
+  const {api,nodes}=harness();api.s.page='assets';api.s.assetDisplayMode='individual';api.s.sort='pnl';
+  api.s.assets=[{id:'low',name:'低',mode:'manual',value:100,cost:90},{id:'high',name:'高',mode:'manual',value:200,cost:100}];
+  api.render();let view=nodes.get('content').innerHTML;
+  assert.ok(view.indexOf('編輯 高')<view.indexOf('編輯 低'));
+  api.s.assets[0].value=500;api.render();view=nodes.get('content').innerHTML;
+  assert.ok(view.indexOf('編輯 低')<view.indexOf('編輯 高'));assert.match(view,/\+410/);
+  const reward={id:'reward',name:'ADA',mode:'crypto',symbol:'ADA',qty:10,costPer:0,quote:{nativePrice:1,fx:32,fetchedAt:'2026-10-16'}};
+  assert.match(api.assetRows([reward]),/\+320/);
+  reward.qty=20;reward.quote.nativePrice=2;assert.match(api.assetRows([reward]),/\+1,280/);
+  reward.costPer=1;assert.match(api.assetRows([reward]),/\+640/);
+});
 test('historical record editor exposes a signed amount and hides current value and purchase cost',()=>{
   const {api,nodes}=harness();api.s.assets=[{id:'loss',mode:'manual',name:'之前的虧損',recordKind:'realized',realizedPnl:-500000,value:0,cost:null}];api.openAsset('loss');
   const form=nodes.get('assetForm');assert.equal(form.elements.manualKind.value,'realized');assert.equal(form.elements.realizedPnl.value,-500000);
