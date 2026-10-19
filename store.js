@@ -199,9 +199,43 @@ export function listenStrategyParticipation(ownerUid,postId,next,error){
   const ref=c("strategyParticipation",ownerUid,"posts",postId,"members");
   return sdk.onSnapshot(ref,snapshot=>next(snapshot.docs.map(item=>({...item.data(),uid:item.id}))),error);
 }
-export async function saveStrategyParticipation(user,ownerUid,postId,choice,strategyUpdatedAt){
+export async function saveStrategyParticipation(user,ownerUid,postId,choice,_strategyUpdatedAt){
   if(!["participating","not-participating"].includes(choice))throw new Error("參與狀態無效。");
-  await sdk.setDoc(d("strategyParticipation",ownerUid,"posts",postId,"members",user.uid),{choice,strategyUpdatedAt,displayName:user.displayName||"使用者",photoURL:user.photoURL||"",updatedAt:new Date().toISOString()});
+  const postRef=d("strategies",ownerUid,"posts",postId),memberRef=d("strategyParticipation",ownerUid,"posts",postId,"members",user.uid);
+  let phase="read",revision;
+  for(let attempt=0;attempt<2;attempt++)try {
+    return await sdk.runTransaction(db,async tx=>{
+      phase="read";
+      const snapshot=await tx.get(postRef);
+      if(!snapshot.exists())throw new Error("這份策略已刪除，無法設定參與狀態。");
+      const post=snapshot.data();
+      if(post.published!==true)throw new Error("這份策略已停止分享，無法設定參與狀態。");
+      if(typeof post.updatedAt!=="string")throw new Error("策略版本資料不完整，請作者重新儲存策略後再試。");
+      // A participation choice survives edits; never submit a cached page revision.
+      revision=post.updatedAt;
+      const entry={choice,strategyUpdatedAt:post.updatedAt,displayName:user.displayName||"使用者",photoURL:user.photoURL||"",updatedAt:new Date().toISOString()};
+      phase="write";
+      tx.set(memberRef,entry);
+      return {post:{...post,id:postId},entry:{...entry,uid:user.uid}};
+    });
+  } catch(error) {
+    if(error?.code!=="permission-denied")throw error;
+    if(phase==="write"&&attempt===0){
+      // Rules may reject a changed revision before the transaction conflict is
+      // retried by the SDK. Retry once only after confirming a newer readable post.
+      let current;
+      try{current=await sdk.getDocFromServer(postRef);}catch(readError){if(readError?.code!=="permission-denied")throw readError;error=readError;phase="read";}
+      if(current){
+        if(!current.exists())throw new Error("這份策略已刪除，無法設定參與狀態。");
+        const latest=current.data();
+        if(latest.published!==true)throw new Error("這份策略已停止分享，無法設定參與狀態。");
+        if(typeof latest.updatedAt==="string"&&latest.updatedAt!==revision)continue;
+      }
+    }
+    const failure=new Error(phase==="read"?"無法讀取這份策略。請重新整理共享頁，確認登入及策略授權仍有效。":"參與狀態未儲存：策略參與權限被拒絕。請重新整理後再試。",{cause:error});
+    failure.code=error.code;failure.userMessage=failure.message;failure.operation="strategy-participation-"+phase;
+    throw failure;
+  }
 }
 export async function strategies(ownerUid,own=false) {
   const ref=c("strategies",ownerUid,"posts");
@@ -220,3 +254,4 @@ export const voteReview=(ownerUid,postId,roundId,uid,choice,reason,profile)=>rev
 export const reviewHistory=(uid,postId)=>reviewRepository(sdk,db).history(uid,postId);
 export const submitTeacherStrategy=(uid,postId,profile,reason)=>reviewRepository(sdk,db).submitTeacher(uid,postId,profile,reason);
 export const teacherStrategyDecision=(ownerUid,postId,decision,profile,reason)=>reviewRepository(sdk,db).decideTeacher(ownerUid,postId,decision,profile,reason);
+

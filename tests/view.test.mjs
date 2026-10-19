@@ -20,7 +20,7 @@ function harness(code=source,overrides={}){
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
   const notifications={notificationStatus:()=>({configured:false,permission:'default',prefs:{strategy:true,daily:true},subscribed:false}),appOpened:async()=>{},strategyPublished:async()=>{},enableNotifications:async()=>{},disableNotifications:async()=>{},updateNotificationPreferences:async()=>{}};
   const context={...review,...core,...backup,VERSION,DEFAULT_SETTINGS,icon,cloud,notifications,refreshMarket:()=>{throw new Error('Demo must never call a market API');},document:{getElementById:name=>{if(!nodes.has(name))throw new Error('Missing element: '+name);return nodes.get(name);},querySelectorAll:()=>[],addEventListener(){},body:{classList:{add(){},remove(){}}}},window:{addEventListener(){},scrollTo(){}},location:{search:'?demo=1',hash:''},navigator:{},URLSearchParams,URL,crypto:webcrypto,structuredClone,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},console,...overrides};
-  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews});',context);
+  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message});',context);
   return {api,nodes,calls};
 }
 test('overview shows principal and overall return while keeping the breakdown collapsed',()=>{
@@ -35,6 +35,64 @@ test('zero cost renders as a known average in both owner and shared holdings',()
   const {api}=harness();const asset={id:'reward',name:'質押獎勵',mode:'crypto',symbol:'ADA',qty:100,costPer:0,quote:{nativePrice:0.25,fx:32,fetchedAt:'2026-10-16'}};
   for(const editable of [true,false]){const view=api.assetRows([asset],editable);assert.match(view,/平均買入/);assert.match(view,/0 USD \/ 顆/);assert.match(view,/\+800/);assert.ok(!view.includes('成本未填'));}
   const lots=[asset,{...asset,id:'second'}];const view=api.assetRows(lots,false);assert.match(view,/0 USD \/ 顆/);assert.ok(!view.includes('已填成本均價'));
+});
+
+test('a failed participation listener is removed, can restart and ignores late callbacks from the failed subscription',()=>{
+  const listeners=[],cloud={isAdmin:()=>false,listenStrategyParticipation(_owner,_post,next,error){const listener={next,error,stopped:false};listeners.push(listener);return ()=>{listener.stopped=true;};}};
+  const {api}=harness(source,{cloud});api.s.demo=false;
+  const owner=api.s.user.uid,post=api.s.ownPosts.find(p=>p.published),key=owner+'/'+post.id;
+  api.subscribeParticipation(owner,post.id);assert.equal(listeners.length,1);
+  listeners[0].error({code:'permission-denied'});
+  assert.equal(api.s.participationUnsubs.has(key),false);assert.equal(listeners[0].stopped,true);
+  assert.match(api.participationPanel(post,owner),/參與 —/);assert.match(api.participationPanel(post,owner),/未能讀取/);
+  listeners[0].next([{uid:'stale',choice:'participating'}]);assert.equal(api.s.participation[key],undefined);
+  api.subscribeParticipation(owner,post.id);assert.equal(listeners.length,2);
+  listeners[1].next([{uid:'current',choice:'participating',displayName:'成員'}]);
+  assert.match(api.participationPanel(post,owner),/參與 1/);assert.equal(api.s.participationErrors[key],undefined);
+  api.stopParticipation(owner,post.id);listeners[1].next([]);
+  assert.equal(api.s.participation[key].length,1);
+});
+
+test('synchronous listener rejection does not leave a dead subscription registered',()=>{
+  let stopped=0;
+  const {api}=harness(source,{cloud:{isAdmin:()=>false,listenStrategyParticipation(_owner,_post,_next,error){error({code:'permission-denied'});return ()=>{stopped++;};}}});
+  api.s.demo=false;const post=api.s.ownPosts.find(p=>p.published);
+  api.subscribeParticipation(api.s.user.uid,post.id);
+  assert.equal(api.s.participationUnsubs.size,0);assert.equal(stopped,1);
+});
+
+test('participation result refreshes the post and choice with the server revision',async()=>{
+  let saved;
+  const {api}=harness(source,{cloud:{isAdmin:()=>false,saveStrategyParticipation:async(_user,_owner,_id,choice)=>saved={post:{id:'p',ownerUid:'demo-self',published:true,term:'long',title:'Updated',symbol:'BTC',thesis:'New',updatedAt:'r2',createdAt:'r1'},entry:{uid:'demo-self',choice,strategyUpdatedAt:'r2'}}}});
+  api.s.demo=false;api.s.page='sharing';api.s.sharingTab='long';api.s.ownPosts=[{...saved?.post,id:'p',published:true,updatedAt:'r1'}];
+  await api.setParticipation({dataset:{owner:'demo-self',id:'p',choice:'participating'}});
+  assert.equal(api.s.ownPosts[0].updatedAt,'r2');assert.equal(api.s.participation['demo-self/p'][0].strategyUpdatedAt,'r2');
+});
+
+test('a participation write resolving after account change cannot populate the next account',async()=>{
+  let resolve;const pending=new Promise(r=>resolve=r);
+  const {api}=harness(source,{cloud:{isAdmin:()=>false,saveStrategyParticipation:()=>pending}});
+  api.s.demo=false;const owner=api.s.user.uid,post=api.s.ownPosts.find(p=>p.published);
+  const work=api.setParticipation({dataset:{owner,id:post.id,choice:'participating'}});
+  api.stopSession();api.s.user={uid:'other-user'};
+  resolve({post,entry:{uid:owner,choice:'participating'}});await work;
+  assert.equal(Object.keys(api.s.participation).length,0);
+});
+
+test('a failed participation write from an old session does not show an error in the next account',async()=>{
+  let reject;const pending=new Promise((_resolve,r)=>reject=r);
+  const {api}=harness(source,{cloud:{isAdmin:()=>false,saveStrategyParticipation:()=>pending}});
+  api.s.demo=false;const owner=api.s.user.uid,post=api.s.ownPosts.find(p=>p.published);
+  const work=api.setParticipation({dataset:{owner,id:post.id,choice:'participating'}});
+  api.stopSession();api.s.user={uid:'other-user'};
+  reject(Object.assign(new Error('denied'),{code:'permission-denied'}));await assert.doesNotReject(work);
+  assert.equal(Object.keys(api.s.participation).length,0);
+});
+
+test('permission messages give operation context without instructing every user to publish rules',()=>{
+  const {api}=harness();
+  assert.ok(!api.message({code:'permission-denied'}).includes('發布'));
+  assert.equal(api.message({code:'permission-denied',userMessage:'參與狀態未儲存'}),'參與狀態未儲存');
 });
 test('financial refreshes retain navigation and avatar DOM while page and profile changes still update them',()=>{
   const {api,nodes}=harness(),writes={navigation:0,userAvatar:0};
@@ -158,4 +216,5 @@ test('consolidated holdings sort by combined market value',()=>{
   const lots=[{id:'btc1',name:'BTC one',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'btc2',name:'BTC two',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'mstr',name:'MSTR',mode:'stock',symbol:'MSTR',qty:1,quote:q}];
   const html=api.assetRows(lots);assert.ok(html.indexOf('BTC · 整合 2 筆')<html.indexOf('MSTR · 美股'));
 });
+
 

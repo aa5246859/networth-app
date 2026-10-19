@@ -1,10 +1,10 @@
 import {reviewState,createReview,castReviewVote,teacherDecisionState} from './review.js?v=2.4.19';
-import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.27";
+import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.28";
 import {TYPES,finite,costAmount,isRealized,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,aggregateHoldings,requiredRates,sharedAsset,parseAsset} from "./core.js";
 import {refreshMarket} from "./quotes.js";
 import {icon} from "./icons.js";
 import {buildBackup,parseBackup} from "./backup.js";
-import * as cloud from "./store.js";
+import * as cloud from "./store.js?v=2.4.28";
 import * as notifications from "./notifications.js";
 
 const $=name=>document.getElementById(name);
@@ -12,7 +12,7 @@ const renderedHeaderHtml=new WeakMap();
 function updateHeaderHtml(node,html){if(renderedHeaderHtml.get(node)!==html){node.innerHTML=html;renderedHeaderHtml.set(node,html);}}
 const PAGES={home:["總覽","OVERVIEW"],assets:["我的持倉","PORTFOLIO"],sharing:["共享空間","SHARED SPACE"],history:["資產紀錄","HISTORY"],settings:["設定","PREFERENCES"]};
 const colors=["#e3b34c","#b29f70","#798d80","#a5a68b","#647b70","#c7b786"];
-const s={user:null,demo:false,page:"home",assets:[],history:[],settings:{...DEFAULT_SETTINGS},published:{assets:[],viewerUids:[]},strategyAccess:{viewerUids:[]},friends:[],ownPosts:[],friendPosts:[],participation:{},participationUnsubs:new Map(),invites:{sent:[],received:[]},sharingTab:"portfolios",friend:"self",search:"",filter:"all",sort:"value",sharedFilter:"all",sharedSort:"value",assetDisplayMode:"aggregate",expandedAssetGroups:new Set(),historyArchivePage:0,historyArchiveOpen:false,refreshing:false,lastRefresh:0,selected:[],portfolioViewers:[],strategyViewers:[],shareDirty:false,settingsDirty:false,dirtyForms:new Set(),inviteEmail:"",adminUsers:[],subscriptions:[],session:0,reviews:{},reviewHistory:{},reviewActor:"author"};
+const s={user:null,demo:false,page:"home",assets:[],history:[],settings:{...DEFAULT_SETTINGS},published:{assets:[],viewerUids:[]},strategyAccess:{viewerUids:[]},friends:[],ownPosts:[],friendPosts:[],participation:{},participationErrors:{},participationUnsubs:new Map(),invites:{sent:[],received:[]},sharingTab:"portfolios",friend:"self",search:"",filter:"all",sort:"value",sharedFilter:"all",sharedSort:"value",assetDisplayMode:"aggregate",expandedAssetGroups:new Set(),historyArchivePage:0,historyArchiveOpen:false,refreshing:false,lastRefresh:0,selected:[],portfolioViewers:[],strategyViewers:[],shareDirty:false,settingsDirty:false,dirtyForms:new Set(),inviteEmail:"",adminUsers:[],subscriptions:[],session:0,reviews:{},reviewHistory:{},reviewActor:"author"};
 let firebaseReady=false,toastTimer,editingAsset=null,editingPost=null,pendingConfirmation=null,authUnsubscribe=null,adminRequest=null;
 
 let loginState="idle";
@@ -37,7 +37,7 @@ async function beginLogin(){
 }
 
 function toast(message,error=false){clearTimeout(toastTimer);$("toast").textContent=message;$("toast").className="toast visible"+(error?" error":"");toastTimer=setTimeout(()=>$("toast").classList.remove("visible"),error?6500:3500);}
-function message(error){if(error?.code==="permission-denied")return "權限不足。若這是第一次更新新版，請先依更新說明發布新版 Firestore 規則。";return error?.message||"操作失敗，請稍後再試。";}
+function message(error){if(error?.userMessage)return error.userMessage;if(error?.code==="permission-denied")return "這次操作未完成：目前帳號沒有存取權限。請重新整理，並確認登入與分享授權仍有效。";return error?.message||"操作失敗，請稍後再試。";}
 async function task(button,fn,errorElement=null){const old=button?.innerHTML;if(button){button.disabled=true;button.innerHTML="處理中…";}document.body.classList.add("saving");try{if(errorElement)errorElement.textContent="";await fn();}catch(e){if(errorElement)errorElement.textContent=message(e);toast(message(e),true);}finally{document.body.classList.remove("saving");if(button){button.disabled=false;if(button.innerHTML==="處理中…")button.innerHTML=old;}}}
 function pnl(value,percent=null){if(!finite(value))return '<span class="muted">未設定成本／待更新</span>';return `<span class="${value>=0?"up":"down"}">${signed(value)}${finite(percent)?` <small>(${value>0?"+":""}${num(percent,2)}%)</small>`:""}</span>`;}
 function badge(text,kind=""){return `<span class="badge ${kind}">${esc(text)}</span>`;}
@@ -151,9 +151,25 @@ function participationPanel(post,ownerUid){
   const rows=(s.participation[participationKey(ownerUid,post.id)]||[]),joined=rows.filter(x=>x.choice==="participating"),notJoined=rows.filter(x=>x.choice==="not-participating"),mine=rows.find(x=>x.uid===s.user?.uid);
   const people=members=>members.map(x=>{const photo=googlePhotoUrl(x.photoURL);return '<span class="participation-person">'+(photo?'<img src="'+esc(photo)+'" alt="" referrerpolicy="no-referrer">':'<span class="participation-initial">'+esc((x.displayName||"友").slice(0,1))+'</span>')+esc(x.displayName||"成員")+'</span>';}).join("");
   const memberGroup=(members,label)=>members.length?'<div role="group" aria-label="'+label+'"><p class="small muted">'+label+'</p><div class="participation-people">'+people(members)+'</div></div>':"";
-  return '<div class="participation-summary"><span>參與 '+joined.length+'</span><span>暫不參與 '+notJoined.length+'</span></div>'+(joined.length||notJoined.length?memberGroup(joined,"參與成員")+memberGroup(notJoined,"暫不參與成員"):'<p class="small muted">目前還沒有人選擇參與狀態。</p>')+'<div class="participation-actions"><button class="button '+(mine?.choice==="participating"?"primary":"secondary")+'" data-action="participation" data-owner="'+esc(ownerUid)+'" data-id="'+esc(post.id)+'" data-choice="participating">'+(mine?.choice==="participating"?"已參與":"參與")+'</button><button class="button '+(mine?.choice==="not-participating"?"primary":"secondary")+'" data-action="participation" data-owner="'+esc(ownerUid)+'" data-id="'+esc(post.id)+'" data-choice="not-participating">'+(mine?.choice==="not-participating"?"已選暫不參與":"暫不參與")+'</button></div>';
+  const unavailable=s.participationErrors[participationKey(ownerUid,post.id)]&&!Object.hasOwn(s.participation,participationKey(ownerUid,post.id));
+  return '<div class="participation-summary"><span>參與 '+(unavailable?"—":joined.length)+'</span><span>暫不參與 '+(unavailable?"—":notJoined.length)+'</span></div>'+(joined.length||notJoined.length?memberGroup(joined,"參與成員")+memberGroup(notJoined,"暫不參與成員"):'<p class="small muted">'+(unavailable?"參與名單未能讀取，請稍後重新開啟策略。":"目前還沒有人選擇參與狀態。")+'</p>')+'<div class="participation-actions"><button class="button '+(mine?.choice==="participating"?"primary":"secondary")+'" data-action="participation" data-owner="'+esc(ownerUid)+'" data-id="'+esc(post.id)+'" data-choice="participating">'+(mine?.choice==="participating"?"已參與":"參與")+'</button><button class="button '+(mine?.choice==="not-participating"?"primary":"secondary")+'" data-action="participation" data-owner="'+esc(ownerUid)+'" data-id="'+esc(post.id)+'" data-choice="not-participating">'+(mine?.choice==="not-participating"?"已選暫不參與":"暫不參與")+'</button></div>';
 }
-function subscribeParticipation(ownerUid,postId){const key=participationKey(ownerUid,postId),posts=ownerUid===s.user?.uid?s.ownPosts:s.friendPosts;if(s.demo||s.participationUnsubs.has(key)||!posts.find(p=>p.id===postId)?.published)return;const session=s.session;const off=cloud.listenStrategyParticipation(ownerUid,postId,rows=>{if(session!==s.session)return;s.participation[key]=rows;const panel=[...document.querySelectorAll("[data-participation-panel]")].find(el=>el.dataset.owner===ownerUid&&el.dataset.post===postId);if(panel){const posts=ownerUid===s.user?.uid?s.ownPosts:s.friendPosts,post=posts.find(x=>x.id===postId);if(post)panel.innerHTML=participationPanel(post,ownerUid);}},error=>{if(session===s.session)toast(error?.code==="permission-denied"?"策略參與名單讀取被 Firestore 規則拒絕。請在 Firebase 發布含 strategyParticipation 路徑的最新 firestore.rules，之後重新整理。":message(error),true);});s.participationUnsubs.set(key,off);}
+function subscribeParticipation(ownerUid,postId){
+  const key=participationKey(ownerUid,postId),posts=ownerUid===s.user?.uid?s.ownPosts:s.friendPosts;
+  if(s.demo||s.participationUnsubs.has(key)||!posts.find(p=>p.id===postId)?.published)return;
+  const session=s.session;let active=true,off=null;
+  const stop=()=>{active=false;off?.();};
+  const updatePanel=()=>{const panel=[...document.querySelectorAll("[data-participation-panel]")].find(el=>el.dataset.owner===ownerUid&&el.dataset.post===postId),posts=ownerUid===s.user?.uid?s.ownPosts:s.friendPosts,post=posts.find(x=>x.id===postId);if(panel&&post)panel.innerHTML=participationPanel(post,ownerUid);};
+  const failed=error=>{
+    if(!active||session!==s.session)return;
+    stop();if(s.participationUnsubs.get(key)===stop)s.participationUnsubs.delete(key);
+    s.participationErrors[key]=true;updatePanel();
+    toast(error?.code==="permission-denied"?"策略參與名單未能讀取。請重新整理，確認登入及此策略的分享授權仍有效。":message(error),true);
+  };
+  s.participationUnsubs.set(key,stop);
+  delete s.participationErrors[key];
+  try{off=cloud.listenStrategyParticipation(ownerUid,postId,rows=>{if(!active||session!==s.session)return;s.participation[key]=rows;delete s.participationErrors[key];updatePanel();},failed);if(!active)off?.();}catch(error){failed(error);}
+}
 function stopParticipation(ownerUid,postId){const key=participationKey(ownerUid,postId),off=s.participationUnsubs.get(key);if(off){off();s.participationUnsubs.delete(key);}}
 function strategyPage(own,friend,term){
   if(!own&&!friend?.strategyAccess)return empty("尚未取得策略授權","請對方在分享設定勾選策略授權。","","lock");
@@ -192,7 +208,7 @@ function confirm(title,text,label="確認"){return new Promise(resolve=>{$("conf
 $("confirmAction").onclick=()=>{const fn=pendingConfirmation;pendingConfirmation=null;$("confirmDialog").close();fn?.(true);};
 $("confirmDialog").addEventListener("close",()=>{if(pendingConfirmation){pendingConfirmation(false);pendingConfirmation=null;}});
 
-function stopSession(){strategyNotificationRoute++;s.notificationTarget=null;quoteRefreshJob=null;s.lastQuoteAttempt=0;s.lastQuoteSignature="";s.quoteRefreshError="";for(const off of s.participationUnsubs.values())off();s.participationUnsubs.clear();s.participation={};s.reviews={};s.reviewHistory={};s.reviewActor="author";s.session++;s.assets=[];s.history=[];s.settings={...DEFAULT_SETTINGS};s.published={assets:[],viewerUids:[]};s.strategyAccess={viewerUids:[]};s.friends=[];s.ownPosts=[];s.friendPosts=[];s.invites={sent:[],received:[]};s.friend="self";s.selected=[];s.portfolioViewers=[];s.strategyViewers=[];s.inviteEmail="";s.subscriptions.forEach(fn=>fn());s.subscriptions=[];s.user=null;s.historyArchivePage=0;s.historyArchiveOpen=false;s.refreshing=false;s.settingsDirty=false;s.dirtyForms.clear();s.adminUsers=[];s.shareDirty=false;for(const name of ["assetDialog","strategyDialog","confirmDialog"]){if($(name).open)$(name).close();}}
+function stopSession(){strategyNotificationRoute++;s.notificationTarget=null;quoteRefreshJob=null;s.lastQuoteAttempt=0;s.lastQuoteSignature="";s.quoteRefreshError="";for(const off of s.participationUnsubs.values())off();s.participationUnsubs.clear();s.participation={};s.participationErrors={};s.reviews={};s.reviewHistory={};s.reviewActor="author";s.session++;s.assets=[];s.history=[];s.settings={...DEFAULT_SETTINGS};s.published={assets:[],viewerUids:[]};s.strategyAccess={viewerUids:[]};s.friends=[];s.ownPosts=[];s.friendPosts=[];s.invites={sent:[],received:[]};s.friend="self";s.selected=[];s.portfolioViewers=[];s.strategyViewers=[];s.inviteEmail="";s.subscriptions.forEach(fn=>fn());s.subscriptions=[];s.user=null;s.historyArchivePage=0;s.historyArchiveOpen=false;s.refreshing=false;s.settingsDirty=false;s.dirtyForms.clear();s.adminUsers=[];s.shareDirty=false;for(const name of ["assetDialog","strategyDialog","confirmDialog"]){if($(name).open)$(name).close();}}
 function showLogin(){stopSession();setLoginState("idle");$("appView").classList.add("hidden");$("pendingView").classList.add("hidden");$("loginView").classList.remove("hidden");}
 function showApp(){setLoginState("idle");const initial=location.hash.slice(1).split("?")[0];s.page=PAGES[initial]?initial:"home";$("loginView").classList.add("hidden");$("pendingView").classList.add("hidden");$("appView").classList.remove("hidden");$("demoBanner").classList.toggle("hidden",!s.demo);render(true);}
 async function startUser(user){if(s.demo)return;stopSession();if(!user){showLogin();return;}s.user=user;const session=s.session;setLoginState("loading");try{const status=await cloud.checkAccess(user);if(session!==s.session)return;if(status!=="approved"){setLoginState("idle");$("loginView").classList.add("hidden");$("appView").classList.add("hidden");$("pendingView").classList.remove("hidden");$("pendingMessage").textContent=status==="denied"?"你的使用申請已被拒絕，請聯絡擁有者。":"已送出使用申請。擁有者核准後，按重新檢查即可使用。";return;}const loaded=await cloud.loadUser(user);if(session!==s.session)return;Object.assign(s,loaded);const guard=fn=>(...args)=>{if(session===s.session)fn(...args);};s.lastRefresh=0;syncSelection();showApp();void notifications.appOpened();s.subscriptions=cloud.listenUser(user.uid,{assets:guard(assets=>{s.assets=assets;render();}),history:guard(history=>{s.history=history;render();}),settings:guard(settings=>{s.settings=settings;render();}),published:guard(value=>{s.published=value;syncSelection();render();}),strategyAccess:guard(value=>{s.strategyAccess=value;syncSelection();render();}),error:guard(e=>toast(message(e),true))});s.subscriptions.push(...cloud.listenFriends(user.uid,guard(friends=>{s.friends=mergeFriendQuotes(friends);if(s.friend!=="self"&&!friends.some(f=>f.id===s.friend)){s.friend="self";s.friendPosts=[];}else if(s.friend!=="self"&&!friends.find(f=>f.id===s.friend)?.strategyAccess){s.friendPosts=[];}render();void autoRefreshQuotes();}),guard(e=>toast(message(e),true))));s.subscriptions.push(...cloud.listenInvitations(user,guard(invites=>{s.invites=invites;if(s.page==="sharing")render();}),guard(e=>toast(message(e),true))));const notificationLink=parseStrategyNotification(location.hash);if(notificationLink)await openStrategyNotification(notificationLink);if(session!==s.session)return;await refreshOwn(false,true);if(session===s.session)await saveSnapshot(false);if(s.page==="sharing")await loadSharing();}catch(e){if(session!==s.session)return;setLoginState("error",message(e));$("loginView").classList.remove("hidden");$("appView").classList.add("hidden");}}
@@ -311,7 +327,26 @@ function openStrategy(postId=null){editingPost=postId?s.ownPosts.find(p=>p.id===
 $("strategyForm").onsubmit=e=>{e.preventDefault();const f=e.currentTarget;task(f.querySelector('[type="submit"]'),async()=>{const session=s.session;const data=Object.fromEntries(new FormData(f));for(const key of ["title","symbol","thesis"]){if(!data[key]?.trim())throw new Error("請填策略名稱、標的與交易理由。");}const now=new Date().toISOString();const post={id:editingPost?.id||id(),ownerUid:s.user.uid,ownerName:s.user.displayName,title:data.title.trim(),symbol:data.symbol.trim().toUpperCase(),term:data.term,thesis:data.thesis.trim(),entry:data.entry.trim(),invalidation:data.invalidation.trim(),target:data.target.trim(),status:data.status,published:f.elements.published.checked,createdAt:editingPost?.createdAt||now,updatedAt:now};if(!s.demo)await cloud.saveStrategy(s.user.uid,post);if(session!==s.session)return;const index=s.ownPosts.findIndex(p=>p.id===post.id);if(index>=0)s.ownPosts[index]=post;else s.ownPosts.push(post);s.sharingTab=post.term;$("strategyDialog").close();render(true);toast(post.published?"策略已儲存並分享給策略授權名單。":"已儲存私人草稿。");if(!s.demo&&post.published){try{const delivery=await notifications.strategyPublished(post);if(session!==s.session)return;if(delivery?.reason==="no-enabled-devices")toast("策略已分享；授權成員尚未啟用策略通知。");}catch(error){if(session===s.session)toast("策略已儲存，但通知傳送失敗："+message(error),true);}}},$("strategyError"));};
 
 async function loadSharingOriginal(){if(s.demo){const friend=s.friends.find(f=>f.id===s.friend);s.friendPosts=friend?.demoPosts||[];render();return;}const session=s.session;const [invites,posts]=await Promise.all([cloud.invitations(s.user),cloud.strategies(s.user.uid,true)]);if(session!==s.session)return;s.invites=invites;s.ownPosts=posts;const friend=s.friends.find(f=>f.id===s.friend);const friendId=s.friend,friendPosts=friend?.strategyAccess?await cloud.strategies(friend.id):[];if(session===s.session&&s.friend===friendId){s.friendPosts=friendPosts;render();}}
-async function setParticipation(button){const ownerUid=button.dataset.owner,postId=button.dataset.id,choice=button.dataset.choice,key=participationKey(ownerUid,postId);if(!["participating","not-participating"].includes(choice))throw new Error("參與狀態無效。");const posts=ownerUid===s.user.uid?s.ownPosts:s.friendPosts,post=posts.find(p=>p.id===postId);if(!post)throw new Error("策略已更新，請重新整理。");const profile={uid:s.user.uid,choice,displayName:s.user.displayName||"使用者",photoURL:s.user.photoURL||"",updatedAt:new Date().toISOString()};if(s.demo)s.participation[key]=[...(s.participation[key]||[]).filter(x=>x.uid!==profile.uid),{...profile,strategyUpdatedAt:post.updatedAt}];else{await cloud.saveStrategyParticipation(s.user,ownerUid,postId,choice,post.updatedAt);s.participation[key]=[...(s.participation[key]||[]).filter(x=>x.uid!==profile.uid),{...profile,strategyUpdatedAt:post.updatedAt}];}render();const card=[...document.querySelectorAll("details[data-strategy-post]")].find(el=>el.dataset.strategyOwner===ownerUid&&el.dataset.strategyPost===postId);if(card)card.open=true;}
+async function setParticipation(button){
+  const session=s.session,user=s.user,ownerUid=button.dataset.owner,postId=button.dataset.id,choice=button.dataset.choice,key=participationKey(ownerUid,postId);
+  if(!user)return;
+  if(!["participating","not-participating"].includes(choice))throw new Error("參與狀態無效。");
+  const posts=ownerUid===user.uid?s.ownPosts:s.friendPosts,post=posts.find(p=>p.id===postId);
+  if(!post)throw new Error("策略已更新，請重新整理。");
+  let entry={uid:user.uid,choice,displayName:user.displayName||"使用者",photoURL:user.photoURL||"",updatedAt:new Date().toISOString(),strategyUpdatedAt:post.updatedAt};
+  if(!s.demo){
+    let saved;try{saved=await cloud.saveStrategyParticipation(user,ownerUid,postId,choice,post.updatedAt);}catch(error){if(session!==s.session||s.user?.uid!==user.uid)return;throw error;}
+    if(session!==s.session||s.user?.uid!==user.uid)return;
+    entry=saved.entry;
+    const current=ownerUid===user.uid?s.ownPosts:s.friend===ownerUid?s.friendPosts:[],index=current.findIndex(p=>p.id===postId);
+    if(index>=0&&current[index].updatedAt===post.updatedAt)current[index]=saved.post;
+  }
+  s.participation[key]=[...(s.participation[key]||[]).filter(x=>x.uid!==user.uid),entry];
+  delete s.participationErrors[key];
+  if(s.page!=="sharing"||(s.friend==="self"?user.uid:s.friend)!==ownerUid)return;
+  render();
+  const card=[...document.querySelectorAll("details[data-strategy-post]")].find(el=>el.dataset.strategyOwner===ownerUid&&el.dataset.strategyPost===postId);if(card)card.open=true;
+}
 async function publish(){if(s.selected.length>100)throw new Error("每次最多分享 100 筆持倉。");const updatedAt=new Date().toISOString();if(s.demo){s.published={ownerName:s.user.displayName,assets:s.assets.filter(a=>s.selected.includes(a.id)).map(sharedAsset),viewerUids:[...s.portfolioViewers],updatedAt};s.strategyAccess={...s.strategyAccess,viewerUids:[...s.strategyViewers],updatedAt};}else{await cloud.publish(s.user.uid,s.user.displayName||"使用者",s.selected,s.portfolioViewers,s.strategyViewers);s.published={...s.published,ownerName:s.user.displayName||"使用者",assets:s.assets.filter(a=>s.selected.includes(a.id)).map(sharedAsset),viewerUids:[...s.portfolioViewers],updatedAt};s.strategyAccess={...s.strategyAccess,viewerUids:[...s.strategyViewers],updatedAt};}s.shareDirty=false;toast("分享設定已儲存。");render(true);}
 function renderAdminUsers(card,users,searchValue=null){
   const filter=card.dataset.statusFilter||"pending",query=searchValue??card.querySelector?.("#adminSearch")?.value??"",normalized=query.trim().toLocaleLowerCase();
@@ -418,4 +453,5 @@ function registerAppUpdates(){
 }
 if("serviceWorker"in navigator)registerAppUpdates();
 if(new URLSearchParams(location.search).has("demo"))startDemo();else initFirebase();
+
 
