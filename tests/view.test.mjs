@@ -20,7 +20,7 @@ function harness(code=source,overrides={}){
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
   const notifications={notificationStatus:()=>({configured:false,permission:'default',prefs:{strategy:true,daily:true},subscribed:false}),appOpened:async()=>{},strategyPublished:async()=>{},enableNotifications:async()=>{},disableNotifications:async()=>{},updateNotificationPreferences:async()=>{}};
   const context={...review,...core,...backup,VERSION,DEFAULT_SETTINGS,icon,cloud,notifications,refreshMarket:()=>{throw new Error('Demo must never call a market API');},document:{getElementById:name=>{if(!nodes.has(name))throw new Error('Missing element: '+name);return nodes.get(name);},querySelectorAll:()=>[],addEventListener(){},body:{classList:{add(){},remove(){}}}},window:{addEventListener(){},scrollTo(){}},location:{search:'?demo=1',hash:''},navigator:{},URLSearchParams,URL,crypto:webcrypto,structuredClone,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},console,...overrides};
-  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message});',context);
+  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message,strategyReadPanel,strategyAudienceEditor,markStrategyRead,subscribeStrategyReads,stopStrategyReads,syncStrategyList});',context);
   return {api,nodes,calls};
 }
 test('overview shows principal and overall return while keeping the breakdown collapsed',()=>{
@@ -215,6 +215,67 @@ test('consolidated holdings sort by combined market value',()=>{
   const {api}=harness();const q={nativePrice:100,fx:1,currency:'USD',fetchedAt:'2026-10-07'};
   const lots=[{id:'btc1',name:'BTC one',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'btc2',name:'BTC two',mode:'crypto',symbol:'BTC',qty:1,quote:q},{id:'mstr',name:'MSTR',mode:'stock',symbol:'MSTR',qty:1,quote:q}];
   const html=api.assetRows(lots);assert.ok(html.indexOf('BTC · 整合 2 筆')<html.indexOf('MSTR · 美股'));
+});
+
+test('strategy recipients inherit the existing authorized audience and editing retains an explicit subset',()=>{
+  const {api,nodes}=harness();api.s.strategyAccess={viewerUids:['one','two']};api.s.invites.sent=[{status:'accepted',viewerUid:'one',recipientEmail:'one@example.com'},{status:'accepted',viewerUid:'two',recipientEmail:'two@example.com'}];
+  api.openStrategy();let editor=nodes.get('strategyAudienceEditor').innerHTML;assert.equal((editor.match(/ checked/g)||[]).length,2);assert.match(editor,/只有勾選的朋友能查看並收到策略通知/);
+  const post=api.s.ownPosts[0];post.audienceUids=['two'];api.openStrategy(post.id);editor=nodes.get('strategyAudienceEditor').innerHTML;assert.equal((editor.match(/ checked/g)||[]).length,1);assert.match(editor,/value="two" checked/);assert.doesNotMatch(editor,/value="one" checked/);
+});
+
+test('author read status counts the selected audience, resets after edits, and ignores revoked or unrelated receipts',()=>{
+  const {api}=harness(),owner=api.s.user.uid;api.s.strategyAccess={viewerUids:['one','two']};
+  const post={id:'read-post',published:true,audienceUids:['one','two'],updatedAt:'v1'};
+  api.s.strategyReads[owner+'/read-post']=[{uid:'one',strategyUpdatedAt:'v1',displayName:'讀者一',photoURL:'https://lh3.googleusercontent.com/a',readAt:'2026-10-19T09:00:00Z'},{uid:'outsider',strategyUpdatedAt:'v1',displayName:'不可顯示'}];
+  let panel=api.strategyReadPanel(post,owner);assert.match(panel,/已讀 1 · 未讀 1/);assert.doesNotMatch(panel,/不可顯示/);assert.match(panel,/<details class="strategy-read-list"[^>]*>/);assert.match(panel,/<img src="https:\/\/lh3.googleusercontent.com\/a"/);
+  post.updatedAt='v2';panel=api.strategyReadPanel(post,owner);assert.match(panel,/已讀 0 · 未讀 2/);
+  api.s.strategyAccess.viewerUids=['two'];panel=api.strategyReadPanel(post,owner);assert.match(panel,/已讀 0 · 未讀 1/);assert.doesNotMatch(panel,/讀者一/);
+});
+
+test('viewer read confirmation is manual, covers the current revision only, and does not change participation',async()=>{
+  const {api}=harness(),owner='friend',user=api.s.user,post={id:'read-post',published:true,audienceUids:[user.uid],updatedAt:'v1'};
+  api.s.friend=owner;api.s.friendPosts=[post];api.s.strategyReads[owner+'/read-post']=[];api.s.participation[owner+'/read-post']=[{uid:user.uid,choice:'not-participating'}];
+  assert.match(api.strategyReadPanel(post,owner),/這次更新尚未標記已讀/);
+  await api.markStrategyRead({dataset:{owner,id:post.id}});
+  assert.match(api.strategyReadPanel(post,owner),/>已讀<\/button>/);assert.equal(api.s.participation[owner+'/read-post'][0].choice,'not-participating');
+  post.updatedAt='v2';assert.match(api.strategyReadPanel(post,owner),/標記已讀/);assert.equal(api.s.strategyReads[owner+'/read-post'][0].strategyUpdatedAt,'v1');
+});
+
+test('read receipt completion after account change cannot populate the next account',async()=>{
+  let finish;const {api}=harness(source,{cloud:{isAdmin:()=>false,markStrategyRead:()=>new Promise(resolve=>finish=resolve)}});
+  const owner='friend',post={id:'p',published:true,updatedAt:'r1'};api.s.demo=false;api.s.friend=owner;api.s.friendPosts=[post];
+  const saving=api.markStrategyRead({dataset:{owner,id:post.id}});api.stopSession();api.s.user={uid:'next'};finish({uid:'demo-self',strategyUpdatedAt:'r1'});await saving;
+  assert.equal(Object.keys(api.s.strategyReads).length,0);
+});
+
+test('read listeners stop cleanly, retry after reopening and ignore callbacks from an old session',()=>{
+  const listeners=[];const {api}=harness(source,{cloud:{isAdmin:()=>false,listenStrategyReads(_owner,_post,_user,next,error){const listener={next,error,stopped:false};listeners.push(listener);return ()=>listener.stopped=true;}}});
+  api.s.demo=false;const post=api.s.ownPosts.find(p=>p.published),owner=api.s.user.uid,key=owner+'/'+post.id;
+  api.subscribeStrategyReads(owner,post.id);listeners[0].error({code:'permission-denied'});assert.equal(api.s.strategyReadUnsubs.size,0);assert.equal(listeners[0].stopped,true);
+  api.subscribeStrategyReads(owner,post.id);listeners[1].next([{uid:'current',strategyUpdatedAt:post.updatedAt}]);assert.equal(api.s.strategyReads[key].length,1);
+  api.stopSession();listeners[1].next([{uid:'late'}]);assert.equal(Object.keys(api.s.strategyReads).length,0);
+});
+
+test('selected strategy participant summaries omit removed recipients while retaining the author',()=>{
+  const {api}=harness(),owner=api.s.user.uid;api.s.strategyAccess.viewerUids=['one'];const post={id:'p',published:true,audienceUids:['one'],updatedAt:'v1'};
+  api.s.participation[owner+'/p']=[{uid:owner,choice:'participating',displayName:'作者'},{uid:'one',choice:'not-participating',displayName:'讀者'},{uid:'other',choice:'participating',displayName:'已撤回'}];
+  const panel=api.participationPanel(post,owner);assert.match(panel,/參與 1/);assert.match(panel,/暫不參與 1/);assert.doesNotMatch(panel,/已撤回/);
+});
+
+test('manual sharing refresh restarts a failed live strategy listener without repeating failed callbacks',async()=>{
+  const listeners=[];let posts=[];
+  const cloud={isAdmin:()=>false,invitations:async()=>({sent:[],received:[]}),strategies:async()=>posts,listenStrategies(_owner,_own,next,error){const listener={next,error,stopped:false};listeners.push(listener);return ()=>listener.stopped=true;}};
+  const {api}=harness(source,{cloud});posts=api.s.ownPosts;api.s.demo=false;api.s.page='sharing';api.s.sharingTab='long';
+  api.syncStrategyList();assert.equal(listeners.length,1);listeners[0].error({code:'permission-denied'});assert.equal(listeners[0].stopped,true);assert.equal(api.s.strategyListOff,null);
+  await api.loadSharing();assert.equal(listeners.length,2);listeners[0].next([{id:'stale'}]);assert.equal(api.s.ownPosts.some(post=>post.id==='stale'),false);
+});
+
+test('read confirmation rejected because of a new revision refreshes content without marking the unseen revision read',async()=>{
+  const current={id:'p',published:true,ownerUid:'friend',term:'long',title:'最新內容',symbol:'BTC',thesis:'新版說明',updatedAt:'v2'};
+  const cloud={isAdmin:()=>false,markStrategyRead:async()=>{const error=new Error('請閱讀最新內容後再按已讀');error.latestPost=current;throw error;}};
+  const {api}=harness(source,{cloud});api.s.demo=false;api.s.friend='friend';api.s.friendPosts=[{...current,updatedAt:'v1'}];
+  await assert.rejects(api.markStrategyRead({dataset:{owner:'friend',id:'p'}}),/最新內容/);
+  assert.equal(api.s.friendPosts[0].updatedAt,'v2');assert.equal(api.s.strategyReads['friend/p'],undefined);
 });
 
 

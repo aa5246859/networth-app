@@ -45,6 +45,7 @@ test('failed strategy notifications can retry; successful devices deduplicate pe
   t.mock.method(globalThis,'fetch',async(url,options)=>{
     const path=String(url);
     if(path.includes('accounts:lookup'))return Response.json({users:[{localId:'author',email:'aaz52468599@gmail.com',emailVerified:true}]});
+    if(path.includes('/selectedStrategies/'))return Response.json({error:{status:'NOT_FOUND'}},{status:404});
     if(path.includes('/strategies/'))return Response.json(doc({ownerUid:{stringValue:'author'},id:{stringValue:'p1'},published:{booleanValue:true},updatedAt:{stringValue:version},title:{stringValue:'Test'},symbol:{stringValue:'BTC'},term:{stringValue:'short'}}));
     if(path.includes('/strategyAccess/'))return Response.json(doc({viewerUids:{arrayValue:{values:[{stringValue:'member'}]}}}));
     if(path.includes('/access/'))return Response.json(doc({status:{stringValue:'approved'}}));
@@ -61,3 +62,31 @@ test('failed strategy notifications can retry; successful devices deduplicate pe
   const repeat=await (await worker.fetch(request(),testEnv)).json();assert.equal(repeat.duplicate,1);assert.equal(fcmAttempts,2);
   version='v3';const edited=await (await worker.fetch(request(),testEnv)).json();assert.equal(edited.sent,1);assert.equal(fcmAttempts,3);assert.ok(pushUrls.every(url=>url==='./#sharing?owner=author&post=p1&term=short'));
 });
+
+test('strategy notifications use the intersection of selected recipients and active access, ignoring client-supplied recipients',async(t)=>{
+  const {generateKeyPairSync}=await import('node:crypto');
+  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
+  const strings=values=>({arrayValue:{values:values.map(stringValue=>({stringValue}))}}),events=new Set(),tokens=[],queryAudiences=[];
+  let audience=['one'],active=['one','two'],version='one',selectedStatus=200,malformed=false;
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    const path=String(url);
+    if(path.includes('accounts:lookup'))return Response.json({users:[{localId:'author',email:'aaz52468599@gmail.com',emailVerified:true}]});
+    if(path.includes('/selectedStrategies/'))return selectedStatus===200?Response.json({fields:{ownerUid:{stringValue:'author'},id:{stringValue:'p1'},title:{stringValue:'Selected'},symbol:{stringValue:'MSTR'},term:{stringValue:'long'},updatedAt:{stringValue:version},published:{booleanValue:true},audienceUids:strings(audience),viewerUids:malformed?{stringValue:'one'}:strings(audience)}}):Response.json({error:{status:'PERMISSION_DENIED'}},{status:selectedStatus});
+    if(path.includes('/strategies/'))throw new Error('Restricted content must never fall back to the legacy collection');
+    if(path.includes('/strategyAccess/'))return Response.json({fields:{viewerUids:strings(active)}});
+    if(path.includes('/access/'))return Response.json({fields:{status:{stringValue:'approved'}}});
+    if(path.includes('oauth2.googleapis.com'))return Response.json({access_token:'test-service-token'});
+    if(path.includes('messages:send')){tokens.push(JSON.parse(options.body).message.token);return Response.json({name:'sent'});}
+    throw new Error('Unexpected request '+path);
+  });
+  const DB={prepare(sql){let args;return {bind(...values){args=values;return this},async all(){queryAudiences.push(args);return {results:['one','two','outsider'].map(uid=>({uid,device_id:'phone',email:uid+'@example.com',token:uid+'-token'}))}},async first(){return events.has(args[0])?{event_key:args[0]}:null},async run(){if(sql.startsWith('INSERT'))events.add(args[0]);return {meta:{changes:1}}}}}};
+  const testEnv={...env,DB,FIREBASE_API_KEY:'test-key',FIREBASE_PROJECT_ID:'test-project',FCM_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.com',private_key:privateKey})};
+  const request=()=>new Request('https://worker.example/strategy-event',{method:'POST',headers:{Origin:env.APP_ORIGIN,Authorization:'Bearer test-token','Content-Type':'application/json'},body:JSON.stringify({postId:'p1',recipients:['two','outsider']})});
+  let result=await (await worker.fetch(request(),testEnv)).json();assert.equal(result.sent,1);assert.deepEqual(tokens,['one-token']);assert.deepEqual(queryAudiences[0],['one']);
+  version='two';audience=['two'];result=await (await worker.fetch(request(),testEnv)).json();assert.equal(result.sent,1);assert.deepEqual(tokens,['one-token','two-token']);assert.deepEqual(queryAudiences[1],['two']);
+  active=['one'];version='revoked';result=await (await worker.fetch(request(),testEnv)).json();assert.equal(result.sent,0);assert.equal(result.reason,'no-viewers');
+  active=['one','two'];audience=[];version='empty';result=await (await worker.fetch(request(),testEnv)).json();assert.equal(result.sent,0);
+  audience=['one'];malformed=true;version='invalid';result=await (await worker.fetch(request(),testEnv)).json();assert.equal(result.sent,0);assert.equal(tokens.length,2);
+  malformed=false;selectedStatus=403;const denied=await worker.fetch(request(),testEnv);assert.equal(denied.status,400);assert.equal(tokens.length,2);
+});
+
