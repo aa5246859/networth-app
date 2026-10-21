@@ -11,13 +11,15 @@ function setup(overrides={}){
   class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
   const fresh=async(assets,key,{now})=>({updates:assets.filter(a=>a.mode!=='manual').map(a=>({id:a.id,mode:a.mode,symbol:a.symbol,quote:{nativePrice:200,fx:32,fetchedAt:now.toISOString(),error:''}})),issues:[],fx:null});
   const cloud={saveQuotes:async(uid,updates)=>{saves.push({uid,updates});return updates;}};
-  const context={s,Date:Clock,AUTO_QUOTE_INTERVAL:60000,document:{visibilityState:'visible',querySelector:()=>null,activeElement:null},render(){},toast:(value,error)=>toasts.push({value,error}),message:error=>error.message||'failed',cloud,refreshMarket:async(...args)=>{calls.push(args);return (overrides.market||fresh)(...args);},...overrides.context};
+  const stockPremarket=async()=>({quotes:{}});
+  const context={s,Date:Clock,AUTO_QUOTE_INTERVAL:60000,document:{visibilityState:'visible',querySelector:()=>null,activeElement:null},render(){},toast:(value,error)=>toasts.push({value,error}),message:error=>error.message||'failed',cloud,stockPremarket,refreshMarket:async(...args)=>{calls.push(args);return (overrides.market||fresh)(...args);},...overrides.context};
   const api=vm.runInNewContext(block+'\n({refreshOwn,refreshFriend,autoRefreshQuotes,mergeFriendQuotes});',context);
   return {s,api,calls,saves,toasts,context,advance:amount=>{now+=amount;},fresh};
 }
 test('visible shared portfolio automatically batches own and friend quotes and writes only own updates',async()=>{
   const x=setup();x.s.page='sharing';x.s.friend='a';await x.api.autoRefreshQuotes();
   assert.equal(x.calls.length,1);assert.equal(x.calls[0][0].length,2);assert.equal(x.s.assets[0].quote.nativePrice,200);assert.equal(x.s.friends[0].assets[0].quote.nativePrice,200);
+  assert.equal(x.calls[0][2].premarketFetcher,x.context.stockPremarket);
   assert.equal(x.saves.length,1);assert.equal(x.saves[0].updates[0].id,'own');assert.equal(x.s.friends[0].localRefreshed,x.s.friends[0].assets[0].quote.fetchedAt);
   assert.equal(x.toasts.length,0);assert.equal(x.s.refreshing,false);
 });
@@ -59,3 +61,4 @@ test('hidden app, open forms and strategy screens do not trigger quote requests'
   x.context.document.visibilityState='visible';x.context.document.querySelector=()=>({open:true});await x.api.autoRefreshQuotes();assert.equal(x.calls.length,0);
   x.context.document.querySelector=()=>null;x.s.page='sharing';x.s.sharingTab='long';await x.api.autoRefreshQuotes();assert.equal(x.calls.length,0);
 });
+

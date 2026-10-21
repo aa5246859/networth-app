@@ -3,6 +3,13 @@ const coinCache=new Map();
 const number=value=>Number(String(value??"").replace(/,/g,""));
 const valid=value=>Number.isFinite(value)&&value>0;
 const iso=seconds=>valid(seconds)?new Date(seconds*1000).toISOString():null;
+const usClock=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+function isPremarket(date){
+  if(!Number.isFinite(date.getTime()))return false;
+  const parts=Object.fromEntries(usClock.formatToParts(date).map(part=>[part.type,part.value]));
+  const minute=Number(parts.hour)*60+Number(parts.minute);
+  return !["Sat","Sun"].includes(parts.weekday)&&minute>=240&&minute<570;
+}
 
 async function json(url, fetchImpl=fetch, timeout=10000) {
   const controller=new AbortController();
@@ -59,9 +66,9 @@ async function pool(items,limit,fn) {
   await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(cursor<items.length){const item=items[cursor++];await fn(item);}}));
 }
 
-export async function refreshMarket(assets, key="", {fetchImpl=fetch,now=new Date()}={}) {
+export async function refreshMarket(assets, key="", {fetchImpl=fetch,now=new Date(),premarketFetcher=null}={}) {
   const auto=assets.filter(a=>a.mode!=="manual"),attemptAt=now.toISOString();
-  const issues=[],cryptoPrices={},stockPrices={};let fx=null,twPrices={};
+  const issues=[],cryptoPrices={},stockPrices={},premarketPrices={};let fx=null,twPrices={};
   const cryptoSymbols=[...new Set(auto.filter(a=>a.mode==="crypto").map(a=>a.symbol.toLowerCase()))];
   const stockSymbols=[...new Set(auto.filter(a=>a.mode==="stock").map(a=>a.symbol.toUpperCase()))];
   const twCodes=[...new Set(auto.filter(a=>a.mode==="tw").map(a=>a.symbol))];
@@ -69,14 +76,36 @@ export async function refreshMarket(assets, key="", {fetchImpl=fetch,now=new Dat
     (async()=>{if(!auto.some(a=>a.mode!=="tw"))return;try{const j=await json("https://open.er-api.com/v6/latest/USD",fetchImpl);if(!valid(j.rates?.TWD))throw new Error();fx={rate:j.rates.TWD,asOf:iso(j.time_last_update_unix),fetchedAt:attemptAt};}catch{issues.push("匯率查詢失敗，保留前次匯率");}})(),
     (async()=>{if(!cryptoSymbols.length)return;const ids={};await pool(cryptoSymbols,3,async s=>{try{ids[s]=await coinId(s,fetchImpl);}catch(e){issues.push(s.toUpperCase()+"："+e.message);}});if(!Object.keys(ids).length)return;try{const j=await json(`https://api.coingecko.com/api/v3/simple/price?ids=${Object.values(ids).map(encodeURIComponent).join(",")}&vs_currencies=usd&include_last_updated_at=true`,fetchImpl);for(const s of Object.keys(ids)){const item=j[ids[s]];if(valid(item?.usd))cryptoPrices[s]={price:item.usd,priceAt:iso(item.last_updated_at),source:"CoinGecko"};}}catch{issues.push("加密貨幣報價暫時無法取得");}})(),
     (async()=>{if(twCodes.length)twPrices=await taiwan(twCodes,fetchImpl);})(),
-    (async()=>{if(!stockSymbols.length)return;if(!key){issues.push("美股需要在設定填入自己的 Finnhub 金鑰");return;}await pool(stockSymbols,3,async s=>{try{const j=await json(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s)}&token=${encodeURIComponent(key)}`,fetchImpl);if(valid(j.c))stockPrices[s]={price:j.c,priceAt:iso(j.t),source:"Finnhub"};}catch{}});})()
+    (async()=>{if(!stockSymbols.length||!key)return;await pool(stockSymbols,3,async s=>{try{const j=await json(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s)}&token=${encodeURIComponent(key)}`,fetchImpl);if(valid(j.c))stockPrices[s]={price:j.c,priceAt:iso(j.t),source:"Finnhub"};}catch{}});})(),
+    (async()=>{
+      if(typeof premarketFetcher!=="function"||!stockSymbols.length||!isPremarket(now))return;
+      const batches=[];for(let offset=0;offset<stockSymbols.length;offset+=20)batches.push(stockSymbols.slice(offset,offset+20));
+      await pool(batches,2,async symbols=>{
+        try{
+          const result=await premarketFetcher(symbols);
+          for(const symbol of symbols){
+            const quote=result?.quotes?.[symbol],at=new Date(quote?.priceAt),age=now-at;
+            if(!quote||quote.symbol!==symbol||quote.session!=="pre"||!valid(quote.price)||!isPremarket(at)||age < -60000||age>6*3600000)continue;
+            premarketPrices[symbol]={price:quote.price,priceAt:at.toISOString(),source:"Yahoo Finance 盤前（可能延遲）"};
+          }
+        }catch{/* The regular source and last successful quote remain available. */}
+      });
+    })()
   ]);
+  for(const [symbol,quote] of Object.entries(premarketPrices)){
+    const regular=stockPrices[symbol];
+    if(!regular||!Number.isFinite(Date.parse(regular.priceAt))||Date.parse(quote.priceAt)>Date.parse(regular.priceAt))stockPrices[symbol]=quote;
+  }
+  if(stockSymbols.length&&!key&&stockSymbols.some(symbol=>!stockPrices[symbol]))issues.push("美股一般報價需要在設定填入自己的 Finnhub 金鑰");
   const updates=auto.map(a=>{
     const previous={...(a.quote||{})};
-    const item=a.mode==="stock"?stockPrices[a.symbol.toUpperCase()]:a.mode==="crypto"?cryptoPrices[a.symbol.toLowerCase()]:a.mode==="tw"?twPrices[a.symbol]:{price:1,priceAt:fx?.asOf,source:"USD / TWD 匯率"};
+    let item=a.mode==="stock"?stockPrices[a.symbol.toUpperCase()]:a.mode==="crypto"?cryptoPrices[a.symbol.toLowerCase()]:a.mode==="tw"?twPrices[a.symbol]:{price:1,priceAt:fx?.asOf,source:"USD / TWD 匯率"};
+    const previousTime=Date.parse(previous.priceAt),newTime=Date.parse(item?.priceAt);
+    const older=a.mode==="stock"&&item&&Number.isFinite(previousTime)&&previousTime<=now.getTime()+60000&&(!Number.isFinite(newTime)||newTime<previousTime);
+    if(older)item=null;
     const next={...previous,lastAttemptAt:attemptAt,currency:a.mode==="tw"?"TWD":"USD"};
     const errors=[];
-    if(item && (a.mode!=="usd"||fx)){next.nativePrice=item.price;next.priceAt=item.priceAt;next.fetchedAt=attemptAt;next.source=item.source;}else{errors.push("報價更新失敗");issues.push(a.name+"：保留前次報價");}
+    if(item && (a.mode!=="usd"||fx)){next.nativePrice=item.price;next.priceAt=item.priceAt;next.fetchedAt=attemptAt;next.source=item.source;}else{errors.push(older?"本次報價較舊，保留前次行情":"報價更新失敗");issues.push(a.name+"：保留前次報價");}
     if(a.mode==="tw")next.fx=1;
     else if(fx){next.fx=fx.rate;next.fxAt=fx.asOf;next.fxFetchedAt=attemptAt;}else errors.push("匯率更新失敗");
     next.error=errors.join("；");
