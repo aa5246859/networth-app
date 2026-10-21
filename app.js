@@ -1,11 +1,11 @@
 import {reviewState,createReview,castReviewVote,teacherDecisionState} from './review.js?v=2.4.19';
-import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.29";
+import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.30";
 import {TYPES,finite,costAmount,isRealized,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,aggregateHoldings,requiredRates,sharedAsset,parseAsset} from "./core.js";
 import {refreshMarket} from "./quotes.js";
 import {icon} from "./icons.js";
 import {buildBackup,parseBackup} from "./backup.js";
-import * as cloud from "./store.js?v=2.4.29";
-import * as notifications from "./notifications.js";
+import * as cloud from "./store.js?v=2.4.30";
+import * as notifications from "./notifications.js?v=2.4.30";
 
 const $=name=>document.getElementById(name);
 const renderedHeaderHtml=new WeakMap();
