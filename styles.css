@@ -560,6 +560,26 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 @media(max-width:900px){.asset-display-toggle{margin-top:-4px}.asset-table .aggregate-detail-row{display:block;padding:0;border-top:0}.asset-table .aggregate-detail-row td{display:block;grid-column:1/-1;width:100%}.aggregate-lot{grid-template-columns:minmax(0,1fr) minmax(90px,auto);gap:10px}.aggregate-lot .table-actions{grid-column:1/-1;justify-content:flex-start}.aggregate-lot .table-actions button{width:40px;min-height:40px}.asset-table .aggregate-row td.action-cell{align-self:start;padding-top:0}.asset-table .aggregate-row .value-cell{padding-left:44px}.asset-table.readonly .aggregate-row{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:370px){.asset-display-toggle{align-items:flex-start;flex-direction:column}.asset-table .aggregate-row .value-cell{padding-left:0}.aggregate-details{padding:12px}}
 .notification-options{display:grid;gap:8px;margin:18px 0}.notification-options .checkbox-row{min-height:48px}.notification-options input:disabled{opacity:.5}
+.strategy-audience{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.strategy-audience>summary,.strategy-read-list>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;cursor:pointer;list-style:none;color:var(--ink);font-size:13px}
+.strategy-audience>summary::-webkit-details-marker,.strategy-read-list>summary::-webkit-details-marker{display:none}
+.strategy-audience>summary:after,.strategy-read-list>summary:after{content:"⌄";color:var(--gold)}
+.strategy-audience[open]>summary:after,.strategy-read-list[open]>summary:after{content:"⌃"}
+.strategy-audience-options{max-height:224px;overflow-y:auto;overscroll-behavior:contain;margin-top:4px}
+.strategy-audience-options .checkbox-row{padding:10px 0;font-size:13px;overflow-wrap:anywhere}
+.strategy-audience-options .checkbox-row span{min-width:0}
+.strategy-read-status,.strategy-read-list{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.strategy-read-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.strategy-read-status .button{min-height:42px;padding:8px 14px}
+.strategy-read-list>summary{justify-content:flex-start}
+.strategy-read-list>summary .small{margin-left:auto}
+.strategy-read-members{max-height:280px;overflow-y:auto;overscroll-behavior:contain}
+.strategy-read-member{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0}
+.strategy-read-member+.strategy-read-member{border-top:1px solid var(--line)}
+.strategy-read-member .participation-person{min-width:0;overflow-wrap:anywhere}
+.strategy-read-member .participation-person img,.strategy-read-member .participation-initial{flex-shrink:0}
+.strategy-read-member>.small{flex-shrink:0}
+@media(max-width:370px){.strategy-read-member{flex-wrap:wrap;gap:6px}.strategy-read-member>.small{margin-left:34px}}
 
 /* Mobile buying average for personal and shared holdings. */
 .asset-cost-mobile{display:none}
@@ -577,4 +597,5 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 .login-button-spinner{display:inline-block;width:17px;height:17px;flex:0 0 17px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:login-progress-spin .85s linear infinite}
 @keyframes login-progress-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.login-button-spinner{animation:none}}
+
 

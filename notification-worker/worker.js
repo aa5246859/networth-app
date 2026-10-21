@@ -16,7 +16,7 @@ async function firebaseUser(request,env){
   }
   return {uid:user.localId,email:String(user.email||"").trim().toLowerCase(),token};
 }
-async function readDoc(path,token,env){const response=await fetch("https://firestore.googleapis.com/v1/projects/"+env.FIREBASE_PROJECT_ID+"/databases/(default)/documents/"+path,{headers:{Authorization:"Bearer "+token}});if(!response.ok)throw new Error("無法確認目前策略分享權限。");return response.json();}
+async function readDoc(path,token,env,optional=false){const response=await fetch("https://firestore.googleapis.com/v1/projects/"+env.FIREBASE_PROJECT_ID+"/databases/(default)/documents/"+path,{headers:{Authorization:"Bearer "+token}});if(optional&&response.status===404)return null;if(!response.ok)throw new Error("無法確認目前策略分享權限。");return response.json();}
 function fieldString(doc,key){return doc.fields?.[key]?.stringValue||"";}
 function fieldList(doc,key){return doc.fields?.[key]?.arrayValue?.values?.map(x=>x.stringValue).filter(Boolean)||[];}
 function serviceAccount(env){try{return JSON.parse(env.FCM_SERVICE_ACCOUNT)}catch{throw new Error("Cloudflare 尚未設定 FCM_SERVICE_ACCOUNT secret。")}}
@@ -49,6 +49,7 @@ async function handle(request,env){
   if(request.method!=="POST")return json({error:"Method not allowed"},405,headers);
   try{
     const url=new URL(request.url),user=await firebaseUser(request,env),body=await bodyOf(request),now=new Date().toISOString();
+    if(url.pathname==="/capabilities")return json({ok:true,strategyAudienceVersion:1,strategyReadVersion:1},200,headers);
     if(url.pathname==="/register"){
       if(typeof body.deviceId!=="string"||body.deviceId.length>100||typeof body.token!=="string"||body.token.length<20||body.token.length>4096)throw new Error("通知裝置資料不完整。");
       await env.DB.prepare("INSERT INTO devices(uid,device_id,email,token,strategy_enabled,daily_enabled,last_opened_day,daily_sent_day,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uid,device_id) DO UPDATE SET email=excluded.email,token=excluded.token,strategy_enabled=excluded.strategy_enabled,daily_enabled=excluded.daily_enabled,updated_at=excluded.updated_at").bind(user.uid,body.deviceId,user.email,body.token,body.strategy===false?0:1,body.daily===false?0:1,taipeiDay(),null,now,now).run();
@@ -66,14 +67,19 @@ async function handle(request,env){
     }
     if(url.pathname==="/strategy-event"){
       if(typeof body.postId!=="string"||body.postId.length>150)throw new Error("策略資料不完整。");
-      const [post,access]=await Promise.all([readDoc("strategies/"+user.uid+"/posts/"+encodeURIComponent(body.postId),user.token,env),readDoc("strategyAccess/"+user.uid,user.token,env)]);
+      const [selected,access]=await Promise.all([readDoc("selectedStrategies/"+user.uid+"/posts/"+encodeURIComponent(body.postId),user.token,env,true),readDoc("strategyAccess/"+user.uid,user.token,env)]);
+      const post=selected||await readDoc("strategies/"+user.uid+"/posts/"+encodeURIComponent(body.postId),user.token,env);
       if(fieldString(post,"ownerUid")!==user.uid||fieldString(post,"id")!==body.postId||post.fields?.published?.booleanValue!==true)throw new Error("只有已發布的策略會發送通知。");
-      const viewers=fieldList(access,"viewerUids").filter(uid=>uid!==user.uid);
+      // Read the audience from Firestore, never from request.body. Missing or
+      // malformed restrictions on a selected post fail closed (send to nobody).
+      const audience=selected?fieldList(post,"viewerUids").filter(uid=>fieldList(post,"audienceUids").includes(uid)):fieldList(access,"viewerUids");
+      const viewers=[...new Set(fieldList(access,"viewerUids"))].filter(uid=>uid!==user.uid&&audience.includes(uid));
       if(!viewers.length)return json({ok:true,sent:0,reason:"no-viewers"},200,headers);
       const recipients=await env.DB.prepare("SELECT uid,device_id,email,token FROM devices WHERE strategy_enabled=1 AND uid IN ("+viewers.map(()=>"?").join(",")+")").bind(...viewers).all();
       const eventKey=user.uid+":"+body.postId+":"+fieldString(post,"updatedAt");
       let sent=0,failed=0,skipped=0,duplicate=0;const errors=[];
       for(const device of recipients.results||[]){
+        if(!viewers.includes(device.uid)){skipped++;continue;}
         const deliveryKey=eventKey+":"+device.uid+":"+device.device_id;
         try{
           if(!await authorizedRecipient(device,env,user)){skipped++;continue;}
@@ -95,4 +101,5 @@ export default {fetch:handle,async scheduled(event,env,ctx){
     await env.DB.prepare("DELETE FROM sent_events WHERE sent_at < datetime('now','-30 days')").run();
   })())
 }};
+
 

@@ -8,7 +8,7 @@ function setup(posts=[]){
   const card={dataset:{strategyOwner:'author',strategyPost:'p1'},querySelector(){return {setAttribute(){},focus(){}}},scrollIntoView(){this.scrolled=true}};
   const s={user:{uid:'viewer'},demo:false,session:1,friends:[],friendPosts:[],ownPosts:[],page:'home'};
   const errors=[];
-  const context=vm.createContext({s,URLSearchParams,cloud:{strategies:async()=>posts},render(){},requestAnimationFrame:fn=>fn(),document:{querySelectorAll:()=>[card]},subscribeParticipation(){},toast:text=>errors.push(text),message:e=>e.message});
+  const context=vm.createContext({s,URLSearchParams,cloud:{strategies:async()=>posts},render(){},requestAnimationFrame:fn=>fn(),document:{querySelectorAll:()=>[card]},subscribeParticipation(){},subscribeStrategyReads(){},toast:text=>errors.push(text),message:e=>e.message});
   vm.runInContext(helpers,context);return {context,s,card,errors};
 }
 test('notification identifies one strategy; category is resolved from current strategy data',async()=>{
@@ -52,3 +52,4 @@ test('notification click awaits navigation before focusing an existing app windo
   handlers.notificationclick({notification:{data:{url:'./#sharing?owner=author&post=p1&term=short'},close(){}},waitUntil(p){pending=p}});
   await pending;assert.deepEqual(actions,['https://example.test/app/#sharing?owner=author&post=p1&term=short','focus']);
 });
+

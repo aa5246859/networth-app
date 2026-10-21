@@ -14,6 +14,10 @@ function participationStore(database,sdk=firestoreSdk){
   const source=readFileSync(new URL('../store.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'').replace('let sdk,db,auth,firebaseApp;','let sdk=__sdk,db=__db,auth={},firebaseApp={};');
   return new Function('__sdk','__db',source+'\nreturn {saveStrategyParticipation};')(sdk,database);
 }
+function strategyStore(database,uid,sdk=firestoreSdk){
+  const source=readFileSync(new URL('../store.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'').replace('let sdk,db,auth,firebaseApp;','let sdk=__sdk,db=__db,auth={currentUser:{uid:__uid}},firebaseApp={};');
+  return new Function('__sdk','__db','__uid',source+'\nreturn {saveStrategy,strategies,listenStrategies,markStrategyRead,saveStrategyParticipation,deleteStrategy};')(sdk,database,uid);
+}
 function interceptStrategyRead(action){
   let reads=0;
   return {sdk:{...firestoreSdk,runTransaction:(database,callback)=>firestoreSdk.runTransaction(database,tx=>callback(new Proxy(tx,{get(target,key){
@@ -77,6 +81,115 @@ test('deleted, unpublished and unauthorized strategies reject the actual partici
   await assertFails(participationStore(db('stranger')).saveStrategyParticipation({uid:'stranger'},'owner','pub','participating','old'));
   const members=await getDocs(collection(db('owner'),'strategyParticipation/owner/posts/pub/members'));
   if(members.size)throw new Error('Invalid participation created data');
+});
+
+test('selected strategy migration is atomic and excludes unselected users who have general strategy access',async()=>{
+  const owner=strategyStore(db('owner'),'owner'),selected={...post('pub'),audienceUids:['viewer']};
+  await owner.saveStrategy('owner',selected,'2026-10-06');
+  const path='selectedStrategies/owner/posts/pub';
+  assert.equal((await read(db('owner'),'strategies/owner/posts/pub')).exists(),false);
+  await assertSucceeds(read(db('viewer'),path));
+  await assertFails(read(db('admin'),path));
+  const viewerPosts=await strategyStore(db('viewer'),'viewer').strategies('owner');
+  assert.equal(viewerPosts.length,1);assert.equal(viewerPosts[0].id,'pub');
+  const omittedPosts=await strategyStore(db('admin'),'admin').strategies('owner');
+  assert.equal(omittedPosts.length,0);
+  await assertFails(write(db('owner'),'strategies/owner/posts/pub',post('pub')));
+});
+
+test('a restricted copy cannot leave a broadly shared legacy copy behind',async()=>{
+  const selected={...post('pub'),audienceUids:['viewer'],viewerUids:['viewer']};
+  await assertFails(write(db('owner'),'selectedStrategies/owner/posts/pub',selected));
+  assert.equal((await read(db('viewer'),'strategies/owner/posts/pub')).exists(),true);
+});
+
+test('private drafts retain selected recipients but cannot expose content through the audience query',async()=>{
+  const owner=strategyStore(db('owner'),'owner'),draft={...post('draft'),audienceUids:['viewer']};
+  await owner.saveStrategy('owner',draft,'2026-10-06');
+  const saved=await read(db('owner'),'selectedStrategies/owner/posts/draft');assert.deepEqual(saved.data().viewerUids,[]);assert.deepEqual(saved.data().audienceUids,['viewer']);
+  await assertFails(read(db('viewer'),'selectedStrategies/owner/posts/draft'));
+  const posts=await strategyStore(db('viewer'),'viewer').strategies('owner');assert.equal(posts.some(post=>post.id==='draft'),false);
+});
+
+test('new users can save a private strategy before authorizing any friends',async()=>{
+  const draft={...post('first'),ownerUid:'viewer',published:false,audienceUids:[]};
+  await assertSucceeds(strategyStore(db('viewer'),'viewer').saveStrategy('viewer',draft));
+  await assertFails(read(db('owner'),'selectedStrategies/viewer/posts/first'));
+});
+
+test('selected recipients must be within the current general strategy authorization',async()=>{
+  const owner=strategyStore(db('owner'),'owner');
+  await assert.rejects(owner.saveStrategy('owner',{...post('pub'),audienceUids:['stranger']}),/授權名單已更新/);
+  const invalid={...post('new'),published:true,audienceUids:['stranger'],viewerUids:['stranger']};
+  await assertFails(write(db('owner'),'selectedStrategies/owner/posts/new',invalid));
+  await assertFails(write(db('owner'),'selectedStrategies/owner/posts/new',{...invalid,audienceUids:[],viewerUids:['viewer']}));
+});
+
+test('selected strategy participation survives content changes and is readable by selected peers without mutual sharing',async()=>{
+  const owner=strategyStore(db('owner'),'owner'),viewer=strategyStore(db('viewer'),'viewer');
+  let selected={...post('pub'),audienceUids:['viewer','admin']};await owner.saveStrategy('owner',selected,'2026-10-06');
+  await viewer.saveStrategyParticipation({uid:'viewer'},'owner','pub','participating','2026-10-06');
+  selected={...selected,updatedAt:'revision-2',thesis:'New reason'};await owner.saveStrategy('owner',selected,'2026-10-06');
+  const peer=await assertSucceeds(getDocs(collection(db('admin'),participationPath.replace(/members\/$/,'members'))));
+  assert.equal(peer.size,1);assert.equal(peer.docs[0].data().choice,'participating');
+  selected={...selected,audienceUids:['viewer'],updatedAt:'revision-3'};await owner.saveStrategy('owner',selected,'revision-2');
+  await assertFails(getDocs(collection(db('admin'),participationPath.replace(/members\/$/,'members'))));
+  await assertFails(strategyStore(db('admin'),'admin').saveStrategyParticipation({uid:'admin'},'owner','pub','participating','revision-3'));
+});
+
+test('manual read receipts are caller-owned, revision-specific and independent of participation',async()=>{
+  const owner=strategyStore(db('owner'),'owner'),viewer=strategyStore(db('viewer'),'viewer'),user={uid:'viewer',displayName:'Viewer',photoURL:'https://lh3.googleusercontent.com/a'};
+  let selected={...post('pub'),audienceUids:['viewer','admin']};await owner.saveStrategy('owner',selected,'2026-10-06');
+  assert.equal((await getDocs(collection(db('owner'),'strategyReads/owner/posts/pub/members'))).size,0);
+  await viewer.saveStrategyParticipation(user,'owner','pub','not-participating','old');
+  const receipt=await viewer.markStrategyRead(user,'owner','pub','2026-10-06');
+  await assertSucceeds(read(db('owner'),'strategyReads/owner/posts/pub/members/viewer'));
+  await assertSucceeds(read(db('viewer'),'strategyReads/owner/posts/pub/members/viewer'));
+  await assertFails(read(db('admin'),'strategyReads/owner/posts/pub/members/viewer'));
+  await assertFails(write(db('admin'),'strategyReads/owner/posts/pub/members/viewer',Object.fromEntries(Object.entries(receipt).filter(([key])=>key!=='uid'))));
+  selected={...selected,updatedAt:'revision-2'};await owner.saveStrategy('owner',selected,'2026-10-06');
+  await assert.rejects(viewer.markStrategyRead(user,'owner','pub','2026-10-06'),error=>error.latestPost?.updatedAt==='revision-2');
+  assert.equal((await read(db('owner'),'strategyReads/owner/posts/pub/members/viewer')).data().strategyUpdatedAt,'2026-10-06');
+  assert.equal((await read(db('owner'),participationPath+'viewer')).data().choice,'not-participating');
+  await viewer.markStrategyRead(user,'owner','pub','revision-2');
+  assert.equal((await read(db('owner'),'strategyReads/owner/posts/pub/members/viewer')).data().strategyUpdatedAt,'revision-2');
+});
+
+test('revoked or unselected viewers cannot mark a strategy as read',async()=>{
+  const owner=strategyStore(db('owner'),'owner');await owner.saveStrategy('owner',{...post('pub'),audienceUids:['viewer']},'2026-10-06');
+  await assertFails(strategyStore(db('admin'),'admin').markStrategyRead({uid:'admin'},'owner','pub','2026-10-06'));
+  await updateDoc(doc(db('owner'),'strategyAccess/owner'),{viewerUids:[]});
+  await assertFails(strategyStore(db('viewer'),'viewer').markStrategyRead({uid:'viewer'},'owner','pub','2026-10-06'));
+});
+
+test('stale strategy editors cannot overwrite a newer revision or its sharing selections',async()=>{
+  const owner=strategyStore(db('owner'),'owner');let selected={...post('pub'),audienceUids:['viewer']};await owner.saveStrategy('owner',selected,'2026-10-06');
+  selected={...selected,updatedAt:'revision-2',audienceUids:['admin']};await owner.saveStrategy('owner',selected,'2026-10-06');
+  await assert.rejects(owner.saveStrategy('owner',{...selected,updatedAt:'revision-3',audienceUids:['viewer']},'2026-10-06'),/其他裝置更新或刪除/);
+  assert.deepEqual((await read(db('owner'),'selectedStrategies/owner/posts/pub')).data().audienceUids,['admin']);
+});
+
+test('live strategy lists show current edits and remove per-post revoked shares without reopening the app',async()=>{
+  const owner=strategyStore(db('owner'),'owner'),viewer=strategyStore(db('viewer'),'viewer'),history=[];let wake=null,failure=null;
+  const off=viewer.listenStrategies('owner',false,posts=>{history.push(posts);wake?.();},error=>{failure=error;wake?.();});
+  const waitFor=predicate=>new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('Live strategy update timed out')),5000);
+    const check=()=>{if(failure){clearTimeout(timer);reject(failure);}else if(predicate(history.at(-1)||[])){clearTimeout(timer);wake=null;resolve();}else wake=check;};check();
+  });
+  try{
+    await waitFor(posts=>posts.some(post=>post.id==='pub'));
+    let selected={...post('pub'),audienceUids:['viewer'],updatedAt:'revision-2'};
+    await owner.saveStrategy('owner',selected,'2026-10-06');await waitFor(posts=>posts.some(post=>post.updatedAt==='revision-2'));
+    assert.equal(history.some(posts=>posts.length===0),false,'An atomic migration must not briefly remove the strategy');
+    selected={...selected,audienceUids:['admin'],updatedAt:'revision-3'};
+    await owner.saveStrategy('owner',selected,'revision-2');await waitFor(posts=>posts.length===0);
+  }finally{off();}
+});
+
+test('an edit concurrent with a manual read confirmation cannot mark the unseen new revision read',async()=>{
+  const intercept=interceptStrategyRead(()=>updateDoc(doc(db('owner'),'strategies/owner/posts/pub'),{updatedAt:'unseen-revision'}));
+  await assert.rejects(strategyStore(db('viewer'),'viewer',intercept.sdk).markStrategyRead({uid:'viewer'},'owner','pub','2026-10-06'));
+  assert.equal((await read(db('owner'),'strategyReads/owner/posts/pub/members/viewer')).exists(),false);
 });
 
 

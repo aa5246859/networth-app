@@ -182,11 +182,11 @@ export async function friendPortfolios(uid) {
   return snap.docs.map(s=>({...s.data(),id:s.id}));
 }
 export function listenFriends(uid,next,error) {
-  let portfolios=[],access=[];
-  const emit=()=>{const combined=new Map(access.map(a=>[a.id,{id:a.id,ownerName:a.ownerName,strategyAccess:true,assets:[],portfolioAccess:false}]));for(const p of portfolios)combined.set(p.id,{...combined.get(p.id),...p,portfolioAccess:true});next([...combined.values()]);};
+  let portfolios=[],access=[],portfoliosLoaded=false,accessLoaded=false;
+  const emit=()=>{if(!portfoliosLoaded||!accessLoaded)return;const combined=new Map(access.map(a=>[a.id,{id:a.id,ownerName:a.ownerName,strategyAccess:true,strategyViewerUids:a.viewerUids||[],assets:[],portfolioAccess:false}]));for(const p of portfolios)combined.set(p.id,{...combined.get(p.id),...p,portfolioAccess:true});next([...combined.values()]);};
   return [
-    sdk.onSnapshot(sdk.query(c("sharedPortfolios"),sdk.where("viewerUids","array-contains",uid)),s=>{portfolios=s.docs.map(x=>({...x.data(),id:x.id}));emit();},error),
-    sdk.onSnapshot(sdk.query(c("strategyAccess"),sdk.where("viewerUids","array-contains",uid)),s=>{access=s.docs.map(x=>({...x.data(),id:x.id}));emit();},error)
+    sdk.onSnapshot(sdk.query(c("sharedPortfolios"),sdk.where("viewerUids","array-contains",uid)),s=>{portfolios=s.docs.map(x=>({...x.data(),id:x.id}));portfoliosLoaded=true;emit();},error),
+    sdk.onSnapshot(sdk.query(c("strategyAccess"),sdk.where("viewerUids","array-contains",uid)),s=>{access=s.docs.map(x=>({...x.data(),id:x.id}));accessLoaded=true;emit();},error)
   ];
 }
 export async function revoke(uid,viewerUid) {
@@ -195,18 +195,26 @@ export async function revoke(uid,viewerUid) {
     snaps.forEach((snap,i)=>{if(snap.exists())tx.update(refs[i],{viewerUids:snap.data().viewerUids.filter(v=>v!==viewerUid),updatedAt:new Date().toISOString()});});
   });
 }
+// Restricted posts have a separate collection so a legacy published-post query
+// never exposes them, and existing all-audience strategies keep working.
+async function currentStrategy(ownerUid,postId,read=ref=>sdk.getDocFromServer(ref)){
+  const selected=d("selectedStrategies",ownerUid,"posts",postId),snapshot=await read(selected);
+  if(snapshot.exists())return {ref:selected,snapshot};
+  const legacy=d("strategies",ownerUid,"posts",postId);
+  return {ref:legacy,snapshot:await read(legacy)};
+}
 export function listenStrategyParticipation(ownerUid,postId,next,error){
   const ref=c("strategyParticipation",ownerUid,"posts",postId,"members");
   return sdk.onSnapshot(ref,snapshot=>next(snapshot.docs.map(item=>({...item.data(),uid:item.id}))),error);
 }
 export async function saveStrategyParticipation(user,ownerUid,postId,choice,_strategyUpdatedAt){
   if(!["participating","not-participating"].includes(choice))throw new Error("參與狀態無效。");
-  const postRef=d("strategies",ownerUid,"posts",postId),memberRef=d("strategyParticipation",ownerUid,"posts",postId,"members",user.uid);
+  const memberRef=d("strategyParticipation",ownerUid,"posts",postId,"members",user.uid);
   let phase="read",revision;
   for(let attempt=0;attempt<2;attempt++)try {
     return await sdk.runTransaction(db,async tx=>{
       phase="read";
-      const snapshot=await tx.get(postRef);
+      const {snapshot}=await currentStrategy(ownerUid,postId,ref=>tx.get(ref));
       if(!snapshot.exists())throw new Error("這份策略已刪除，無法設定參與狀態。");
       const post=snapshot.data();
       if(post.published!==true)throw new Error("這份策略已停止分享，無法設定參與狀態。");
@@ -224,7 +232,7 @@ export async function saveStrategyParticipation(user,ownerUid,postId,choice,_str
       // Rules may reject a changed revision before the transaction conflict is
       // retried by the SDK. Retry once only after confirming a newer readable post.
       let current;
-      try{current=await sdk.getDocFromServer(postRef);}catch(readError){if(readError?.code!=="permission-denied")throw readError;error=readError;phase="read";}
+      try{current=(await currentStrategy(ownerUid,postId)).snapshot;}catch(readError){if(readError?.code!=="permission-denied")throw readError;error=readError;phase="read";}
       if(current){
         if(!current.exists())throw new Error("這份策略已刪除，無法設定參與狀態。");
         const latest=current.data();
@@ -238,13 +246,63 @@ export async function saveStrategyParticipation(user,ownerUid,postId,choice,_str
   }
 }
 export async function strategies(ownerUid,own=false) {
-  const ref=c("strategies",ownerUid,"posts");
-  const snap=await sdk.getDocs(own?ref:sdk.query(ref,sdk.where("published","==",true)));return snap.docs.map(s=>({...s.data(),id:s.id}));
+  const [legacy,selected]=await Promise.all(strategyQueries(ownerUid,own).map(ref=>sdk.getDocs(ref)));
+  return mergeStrategies(legacy,selected);
 }
-export async function saveStrategy(uid,post) {
-  await sdk.setDoc(d("strategies",uid,"posts",post.id),clean(post));
+function strategyQueries(ownerUid,own){
+  const legacy=c("strategies",ownerUid,"posts"),selected=c("selectedStrategies",ownerUid,"posts");
+  return own?[legacy,selected]:[sdk.query(legacy,sdk.where("published","==",true)),sdk.query(selected,sdk.where("viewerUids","array-contains",auth.currentUser.uid))];
 }
-export const deleteStrategy=(uid,postId)=>sdk.deleteDoc(d("strategies",uid,"posts",postId));
+function mergeStrategies(legacy,selected){
+  const posts=new Map();
+  for(const snap of [legacy,selected])for(const item of snap?.docs||[])posts.set(item.id,{...item.data(),id:item.id});
+  return [...posts.values()];
+}
+export function listenStrategies(ownerUid,own,next,error){
+  const snapshots=[null,null];let active=true,dirty=false;
+  const emit=()=>{if(active&&dirty&&snapshots.every(Boolean)){dirty=false;next(mergeStrategies(...snapshots));}};
+  const synchronized=typeof sdk.onSnapshotsInSync==="function",stopSync=synchronized?sdk.onSnapshotsInSync(db,emit):null;
+  const off=strategyQueries(ownerUid,own).map((ref,index)=>sdk.onSnapshot(ref,value=>{if(!active)return;snapshots[index]=value;dirty=true;if(!synchronized)emit();},failure=>{if(active)error(failure);}));
+  return ()=>{active=false;stopSync?.();off.forEach(stop=>stop());};
+}
+export async function saveStrategy(uid,post,expectedUpdatedAt=undefined) {
+  return sdk.runTransaction(db,async tx=>{
+    const legacy=d("strategies",uid,"posts",post.id),selected=d("selectedStrategies",uid,"posts",post.id);
+    const [old,current,access]=await Promise.all([tx.get(legacy),tx.get(selected),tx.get(d("strategyAccess",uid))]);
+    const before=current.exists()?current.data():old.data();
+    if(expectedUpdatedAt!==undefined&&(!before||before.updatedAt!==expectedUpdatedAt))throw new Error("這份策略已在其他裝置更新或刪除，請重新開啟編輯。");
+    // Backups import as private legacy drafts, with no sharing permissions.
+    if(!Object.hasOwn(post,"audienceUids")){
+      if(current.exists())throw new Error("請更新 App 後再編輯這份策略。");
+      tx.set(legacy,clean(post));return post;
+    }
+    const authorized=access.data()?.viewerUids||[],audienceUids=[...new Set(post.audienceUids)].filter(value=>typeof value==="string"&&authorized.includes(value)&&value!==uid);
+    if(post.audienceUids.some(value=>!authorized.includes(value)))throw new Error("策略授權名單已更新，請重新選擇分享對象。");
+    if(post.published&&!audienceUids.length)throw new Error("請至少選擇一位策略分享對象，或儲存為私人草稿。");
+    const saved=clean({...post,audienceUids,viewerUids:post.published?audienceUids:[]});
+    tx.set(selected,saved);
+    if(old.exists())tx.delete(legacy);
+    return saved;
+  });
+}
+export async function deleteStrategy(uid,postId){
+  await sdk.runTransaction(db,async tx=>{tx.delete(d("strategies",uid,"posts",postId));tx.delete(d("selectedStrategies",uid,"posts",postId));});
+}
+export function listenStrategyReads(ownerUid,postId,userUid,next,error){
+  const path=["strategyReads",ownerUid,"posts",postId,"members"];
+  return userUid===ownerUid?sdk.onSnapshot(c(...path),snapshot=>next(snapshot.docs.map(item=>({...item.data(),uid:item.id}))),error):sdk.onSnapshot(d(...path,userUid),snapshot=>next(snapshot.exists()?[{...snapshot.data(),uid:userUid}]:[]),error);
+}
+export async function markStrategyRead(user,ownerUid,postId,expectedUpdatedAt){
+  try{return await sdk.runTransaction(db,async tx=>{
+    const {snapshot}=await currentStrategy(ownerUid,postId,ref=>tx.get(ref));
+    if(!snapshot.exists()||snapshot.data().published!==true)throw new Error("這份策略已刪除或停止分享。");
+    const post={...snapshot.data(),id:postId};
+    if(typeof expectedUpdatedAt!=="string"||post.updatedAt!==expectedUpdatedAt){const error=new Error("策略剛剛已更新，請閱讀最新內容後再按已讀。");error.latestPost=post;throw error;}
+    const entry={strategyUpdatedAt:post.updatedAt,displayName:(user.displayName||"使用者").slice(0,80),photoURL:user.photoURL||"",readAt:new Date().toISOString()};
+    tx.set(d("strategyReads",ownerUid,"posts",postId,"members",user.uid),entry);
+    return {...entry,uid:user.uid};
+  });}catch(error){if(error?.code!=="permission-denied")throw error;const failure=new Error("已讀狀態未儲存：這份策略可能已更新或撤回分享，請重新開啟確認。",{cause:error});failure.code=error.code;failure.userMessage=failure.message;throw failure;}
+}
 export async function adminUsers() {const snap=await sdk.getDocs(c("access"));return snap.docs.map(s=>({...s.data(),id:s.id}));}
 export const setAccess=(uid,status)=>sdk.setDoc(d("access",uid),{status},{merge:true});
 
