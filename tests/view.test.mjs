@@ -23,6 +23,18 @@ function harness(code=source,overrides={}){
   const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message,strategyReadPanel,strategyAudienceEditor,markStrategyRead,subscribeStrategyReads,stopStrategyReads,syncStrategyList});',context);
   return {api,nodes,calls};
 }
+test('premarket labels reuse the existing owner, shared and aggregate markup without adding controls',()=>{
+  const {api}=harness();
+  const stock={id:'pre',name:'MSTR',symbol:'MSTR',mode:'stock',qty:2,costPer:100,quote:{nativePrice:115,fx:32,priceAt:'2026-10-21T09:00:00Z',fetchedAt:'2026-10-21T09:01:00Z',source:'Finnhub',error:''}};
+  for(const editable of [true,false]){
+    const regular=api.assetRows([stock],editable);
+    const pre={...stock,quote:{...stock.quote,source:'Yahoo Finance 盤前（可能延遲）'}};
+    const after=api.assetRows([pre],editable);
+    assert.equal(after,regular.replace('行情 ','盤前行情 ').replace('Finnhub','Yahoo Finance 盤前（可能延遲）'));
+    const lots=[pre,{...pre,id:'two'}],normal=lots.map(a=>({...a,quote:{...a.quote,source:'Finnhub'}}));
+    assert.equal(api.assetRows(lots,editable),api.assetRows(normal,editable).replace('目前均價','盤前均價'));
+  }
+});
 test('overview shows principal and overall return while keeping the breakdown collapsed',()=>{
   const {api,nodes}=harness();
   api.s.page='home';api.s.assets=[{id:'cash',name:'Cash',mode:'manual',value:2500000,cost:2500000},{id:'old',name:'以前的虧損',mode:'manual',recordKind:'realized',realizedPnl:-500000,value:0,cost:null}];api.render();

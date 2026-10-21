@@ -1,3 +1,4 @@
+import {premarketQuotes,limitedJson} from "./premarket.js";
 const cors=(env)=>({"Access-Control-Allow-Origin":env.APP_ORIGIN,"Access-Control-Allow-Methods":"POST, OPTIONS","Access-Control-Allow-Headers":"Authorization, Content-Type","Vary":"Origin"});
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8",...headers}});
 const taipeiDay=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
@@ -48,8 +49,15 @@ async function handle(request,env){
   if(request.headers.get("Origin")!==env.APP_ORIGIN)return json({error:"來源網址不符。"},403,headers);
   if(request.method!=="POST")return json({error:"Method not allowed"},405,headers);
   try{
-    const url=new URL(request.url),user=await firebaseUser(request,env),body=await bodyOf(request),now=new Date().toISOString();
-    if(url.pathname==="/capabilities")return json({ok:true,strategyAudienceVersion:1,strategyReadVersion:1},200,headers);
+    const url=new URL(request.url);
+    // Public quotes contain no account, portfolio or notification data. Keep
+    // this bounded, fixed-upstream lookup separate from authenticated actions.
+    if(url.pathname==="/premarket-quotes"){
+      const body=await limitedJson(request,2048);
+      return json(await premarketQuotes(body.symbols,request.url),200,{...headers,"Cache-Control":"no-store"});
+    }
+    const user=await firebaseUser(request,env),body=await bodyOf(request),now=new Date().toISOString();
+    if(url.pathname==="/capabilities")return json({ok:true,strategyAudienceVersion:1,strategyReadVersion:1,premarketVersion:1},200,headers);
     if(url.pathname==="/register"){
       if(typeof body.deviceId!=="string"||body.deviceId.length>100||typeof body.token!=="string"||body.token.length<20||body.token.length>4096)throw new Error("通知裝置資料不完整。");
       await env.DB.prepare("INSERT INTO devices(uid,device_id,email,token,strategy_enabled,daily_enabled,last_opened_day,daily_sent_day,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uid,device_id) DO UPDATE SET email=excluded.email,token=excluded.token,strategy_enabled=excluded.strategy_enabled,daily_enabled=excluded.daily_enabled,updated_at=excluded.updated_at").bind(user.uid,body.deviceId,user.email,body.token,body.strategy===false?0:1,body.daily===false?0:1,taipeiDay(),null,now,now).run();
