@@ -1,4 +1,4 @@
-import * as cloud from "./store.js";
+import * as cloud from "./store.js?v=2.4.30";
 import {NOTIFICATION_WORKER_URL,FIREBASE_VAPID_KEY} from "./config.js";
 import {taipeiDay} from "./core.js";
 const PREF_KEY="wealthTrackerNotificationPrefs",TOKEN_KEY="wealthTrackerPushToken",DEVICE_KEY="wealthTrackerPushDevice",OPENED_KEY="wealthTrackerNotificationOpenedDay";
