@@ -20,7 +20,7 @@ function harness(code=source,overrides={}){
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
   const notifications={notificationStatus:()=>({configured:false,permission:'default',prefs:{strategy:true,daily:true},subscribed:false}),appOpened:async()=>{},strategyPublished:async()=>{},enableNotifications:async()=>{},disableNotifications:async()=>{},updateNotificationPreferences:async()=>{}};
   const context={...review,...core,...backup,VERSION,DEFAULT_SETTINGS,icon,cloud,notifications,refreshMarket:()=>{throw new Error('Demo must never call a market API');},document:{getElementById:name=>{if(!nodes.has(name))throw new Error('Missing element: '+name);return nodes.get(name);},querySelectorAll:()=>[],addEventListener(){},body:{classList:{add(){},remove(){}}}},window:{addEventListener(){},scrollTo(){}},location:{search:'?demo=1',hash:''},navigator:{},URLSearchParams,URL,crypto:webcrypto,structuredClone,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},console,...overrides};
-  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message,strategyReadPanel,strategyAudienceEditor,markStrategyRead,subscribeStrategyReads,stopStrategyReads,syncStrategyList});',context);
+  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message,strategyReadPanel,strategyAudienceEditor,markStrategyRead,subscribeStrategyReads,stopStrategyReads,syncStrategyList,openCompletion,saveCompletion,completionPreview});',context);
   return {api,nodes,calls};
 }
 test('premarket labels reuse the existing owner, shared and aggregate markup without adding controls',()=>{
@@ -291,3 +291,23 @@ test('read confirmation rejected because of a new revision refreshes content wit
 });
 
 
+
+
+test('completed strategies remain discoverable and show a result without altering personal finances or responses',async()=>{
+  const {api,nodes}=harness();api.startDemo();api.s.page='sharing';api.s.sharingTab='long';
+  const post=api.s.ownPosts.find(p=>p.term==='long'),assets=JSON.stringify(api.s.assets),history=JSON.stringify(api.s.history),key=api.s.user.uid+'/'+post.id;
+  api.s.participation[key]=[{uid:'demo-friend',choice:'participating',displayName:'Friend'}];api.openCompletion(post.id);
+  await api.saveCompletion({outcome:'profit',amount:'1234.50',currency:'USD',closedOn:core.taipeiDay(),note:'<img src=x onerror=alert(1)>\n出場心得'});
+  assert.equal(api.s.strategyStatus,'closed');assert.equal(api.s.ownPosts.find(p=>p.id===post.id).status,'closed');assert.equal(JSON.stringify(api.s.assets),assets);assert.equal(JSON.stringify(api.s.history),history);assert.equal(api.s.participation[key][0].choice,'participating');
+  const content=nodes.get('content').innerHTML;assert.match(content,/獲利 · \+US\$ 1,234.5/);assert.match(content,/&lt;img/);assert.ok(!content.includes('<img src=x'));
+  api.s.strategyStatus='open';api.render();assert.ok(!nodes.get('content').innerHTML.includes('data-strategy-post="'+post.id+'"'));
+  api.s.strategyStatus='closed';api.render();assert.ok(nodes.get('content').innerHTML.includes('data-strategy-post="'+post.id+'"'));
+  api.openStrategy(post.id);assert.equal(nodes.get('strategyForm').elements.holdingPeriod.value,post.holdingPeriod);assert.equal(nodes.get('strategyForm').elements.status.disabled,true);
+});
+
+test('shared completed results are read-only and legacy completed records never claim zero profit',()=>{
+  const {api,nodes}=harness();api.startDemo();api.s.page='sharing';api.s.friend='demo-friend';api.s.sharingTab='long';api.s.strategyStatus='closed';
+  api.s.friendPosts=api.s.friendPosts.map(post=>({...post,status:'closed',holdingPeriod:'三年',completion:{outcome:'loss',amount:null,currency:'TWD',closedOn:core.taipeiDay(),note:'Review'}}));api.render();
+  let content=nodes.get('content').innerHTML;assert.match(content,/虧損 · 金額未填/);assert.match(content,/預期持有時間/);assert.ok(!content.includes('data-action="complete-strategy"'));assert.ok(!content.includes('data-action="edit-strategy"'));
+  delete api.s.friendPosts[0].completion;api.render();content=nodes.get('content').innerHTML;assert.match(content,/尚未填寫結單結果/);assert.ok(!content.includes('獲利 · NT$ 0'));
+});

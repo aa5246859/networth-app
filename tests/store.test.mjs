@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
-import {normalizeAsset,sharedAsset} from '../core.js';
+import {normalizeAsset,sharedAsset,parseStrategyCompletion} from '../core.js';
 const source=fs.readFileSync(new URL('../store.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'').replace('let sdk,db,auth,firebaseApp;','let sdk=__sdk,db={},auth={},firebaseApp={};');
 function harness(seed={}){
   const docs=new Map(Object.entries(structuredClone(seed))),deleted=Symbol('delete'),listeners=[];
@@ -11,8 +11,8 @@ function harness(seed={}){
   const merge=(a,b)=>{const out={...a};for(const [k,v] of Object.entries(b)){if(v===deleted)delete out[k];else out[k]=v&&typeof v==='object'&&!Array.isArray(v)?merge(out[k]||{},v):structuredClone(v);}return out;};
   const sdk={doc:(_,...parts)=>parts.join('/'),collection:(_,...parts)=>parts.join('/'),deleteField:()=>deleted,setDoc:async(ref,data)=>{docs.set(ref,structuredClone(data));for(const listener of listeners)if(ref.startsWith(listener.ref+'/'))listener.emit();},onSnapshot:(ref,next)=>{const listener={ref,emit:()=>next({docs:[...docs.entries()].filter(([key])=>key.startsWith(ref+'/')).map(([key,value])=>({id:key.split('/').at(-1),data:()=>structuredClone(value)}))})};listeners.push(listener);listener.emit();return ()=>{const index=listeners.indexOf(listener);if(index>=0)listeners.splice(index,1);};},getDoc:async ref=>snap(ref),getDocFromServer:async ref=>snap(ref),getDocs:async ref=>({docs:[...docs.keys()].filter(k=>k.startsWith(ref+'/')&&k.slice(ref.length+1).split('/').length===1).map(snap)}),
     runTransaction:async(_,fn)=>{const writes=[];let writing=false;const tx={get:async ref=>{assert.equal(writing,false,'transaction reads must precede writes');return snap(ref);},set:(ref,data,options)=>{writing=true;writes.push(()=>docs.set(ref,options?.merge?merge(docs.get(ref),data):structuredClone(data)));},update:(ref,patch)=>{writing=true;writes.push(()=>{const next={...docs.get(ref)};for(const [field,value] of Object.entries(patch)){const parts=field.split('.');let target=next;for(const part of parts.slice(0,-1)){target[part]={...target[part]};target=target[part];}if(value===deleted)delete target[parts.at(-1)];else target[parts.at(-1)]=structuredClone(value);}docs.set(ref,next);});},delete:ref=>{writing=true;writes.push(()=>docs.delete(ref));}};const result=await fn(tx);for(const write of writes)write();for(const listener of [...listeners])listener.emit();return result;}};
-  const context={__sdk:sdk,normalizeAsset,sharedAsset,crypto:webcrypto,structuredClone,console,DEFAULT_SETTINGS:{goal:10000000,targetDate:'2030-05-17',monthly:0,finnhubKey:''},ADMIN_EMAIL:'admin@example.com'};
-  const api=vm.runInNewContext(source+'\n({saveAsset,saveQuotes,deleteAsset,publish,loadUser,snapshot,listenStrategyParticipation,saveStrategyParticipation});',context);
+  const context={__sdk:sdk,normalizeAsset,sharedAsset,parseStrategyCompletion,crypto:webcrypto,structuredClone,console,DEFAULT_SETTINGS:{goal:10000000,targetDate:'2030-05-17',monthly:0,finnhubKey:''},ADMIN_EMAIL:'admin@example.com'};
+  const api=vm.runInNewContext(source+'\n({saveAsset,saveQuotes,deleteAsset,publish,loadUser,snapshot,listenStrategyParticipation,saveStrategyParticipation,saveStrategy});',context);
   return {api,docs,sdk,emitAll:()=>listeners.forEach(listener=>listener.emit())};
 }
 const asset={id:'a',name:'Stock',mode:'stock',symbol:'TEST',qty:10,costPer:100,updatedAt:'one',quote:{nativePrice:110,fx:32,lastAttemptAt:'2026-10-06T10:00:00Z'}};
@@ -84,3 +84,17 @@ test('a denied write with an unchanged revision is not retried or reported as su
 
 
 
+
+
+test('completing a selected strategy keeps participation, read records and holdings intact',async()=>{
+  const path='selectedStrategies/owner/posts/p',post={id:'p',ownerUid:'owner',title:'Plan',symbol:'BTC',thesis:'Reason',term:'short',status:'active',published:true,audienceUids:['viewer'],viewerUids:['viewer'],holdingPeriod:'一週',updatedAt:'v1'};
+  const member='strategyParticipation/owner/posts/p/members/viewer',read='strategyReads/owner/posts/p/members/viewer',assetPath='users/owner/assets/a';
+  const {api,docs}=harness({[path]:post,'strategyAccess/owner':{viewerUids:['viewer']},[member]:{choice:'participating'},[read]:{strategyUpdatedAt:'v1'},[assetPath]:asset});
+  const done=await api.saveStrategy('owner',{...post,status:'closed',updatedAt:'v2',completion:{outcome:'loss',amount:50,currency:'USD',closedOn:'2026-10-20',note:'Stop'}},'v1');
+  assert.equal(done.completion.amount,50);assert.equal(docs.get(member).choice,'participating');assert.equal(docs.get(read).strategyUpdatedAt,'v1');assert.deepEqual(docs.get(assetPath),asset);
+  const edit={...done,title:'Corrected',updatedAt:'v3'};delete edit.completion;delete edit.holdingPeriod;
+  const saved=await api.saveStrategy('owner',edit,'v2');assert.equal(saved.completion.outcome,'loss');assert.equal(saved.holdingPeriod,'一週');
+  await assert.rejects(api.saveStrategy('owner',{...saved,status:'active'},'v3'),/已完成結單/);
+  await assert.rejects(api.saveStrategy('owner',{...done,completion:{...done.completion,amount:999}},'v1'),/其他裝置更新/);
+  assert.equal(docs.get(path).completion.amount,50);
+});

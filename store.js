@@ -1,6 +1,6 @@
 import {reviewRepository} from './review-store.js';
 import {FIREBASE_CONFIG,ADMIN_EMAIL,DEFAULT_SETTINGS} from "./config.js";
-import {normalizeAsset,sharedAsset} from "./core.js";
+import {normalizeAsset,sharedAsset,parseStrategyCompletion} from "./core.js";
 let sdk,db,auth,firebaseApp;
 export async function connect() {
   const [appModule,authModule,firestoreModule]=await Promise.all([
@@ -271,6 +271,9 @@ export async function saveStrategy(uid,post,expectedUpdatedAt=undefined) {
     const [old,current,access]=await Promise.all([tx.get(legacy),tx.get(selected),tx.get(d("strategyAccess",uid))]);
     const before=current.exists()?current.data():old.data();
     if(expectedUpdatedAt!==undefined&&(!before||before.updatedAt!==expectedUpdatedAt))throw new Error("這份策略已在其他裝置更新或刪除，請重新開啟編輯。");
+    // Completion records and the separate holding period survive later edits.
+    for(const field of ["holdingPeriod","completion"])if(before&&Object.hasOwn(before,field)&&!Object.hasOwn(post,field))post={...post,[field]:before[field]};
+    if(post.completion){if(post.status!=="closed")throw new Error("這份策略已完成結單，請在結單紀錄修改結果。");post={...post,completion:parseStrategyCompletion(post.completion)};}
     // Backups import as private legacy drafts, with no sharing permissions.
     if(!Object.hasOwn(post,"audienceUids")){
       if(current.exists())throw new Error("請更新 App 後再編輯這份策略。");

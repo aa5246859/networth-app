@@ -53,3 +53,10 @@ test('notification click awaits navigation before focusing an existing app windo
   await pending;assert.deepEqual(actions,['https://example.test/app/#sharing?owner=author&post=p1&term=short','focus']);
 });
 
+
+
+test('a completion notification opens the completed tab and the matching strategy',async()=>{
+  const {context,s}=setup([{id:'done',published:true,term:'short',status:'closed'}]);
+  await context.openStrategyNotification({ownerUid:'friend',postId:'done',term:'short'});
+  assert.equal(s.strategyStatus,'closed');assert.equal(s.sharingTab,'short');assert.equal(s.notificationTarget.postId,'done');
+});
