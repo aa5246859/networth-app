@@ -1,12 +1,12 @@
 import {reviewState,createReview,castReviewVote,teacherDecisionState} from './review.js?v=2.4.19';
-import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.34";
+import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.35";
 import {TYPES,finite,costAmount,isRealized,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,aggregateHoldings,requiredRates,sharedAsset,parseAsset,parseStrategyCompletion,strategyCompletion,applyStrategyCompletion} from "./core.js";
-import {refreshMarket} from "./quotes.js?v=2.4.34";
+import {refreshMarket} from "./quotes.js?v=2.4.35";
 import {icon} from "./icons.js";
 import {buildBackup,parseBackup} from "./backup.js";
-import * as cloud from "./store.js?v=2.4.34";
-import * as notifications from "./notifications.js?v=2.4.34";
-import {stockPremarket} from "./premarket-client.js?v=2.4.34";
+import * as cloud from "./store.js?v=2.4.35";
+import * as notifications from "./notifications.js?v=2.4.35";
+import {stockPremarket} from "./premarket-client.js?v=2.4.35";
 
 const $=name=>document.getElementById(name);
 const renderedHeaderHtml=new WeakMap();
@@ -194,7 +194,9 @@ function strategyReadPanel(post,ownerUid){
   }
   const people=strategyAudience(post,ownerUid),readBy=new Map((rows||[]).filter(row=>row.strategyUpdatedAt===post.updatedAt).map(row=>[row.uid,row]));
   const readCount=people.filter(uid=>readBy.has(uid)).length;
-  return `<details class="strategy-read-list" data-read-details data-owner="${esc(ownerUid)}" data-post="${esc(post.id)}"><summary><span>閱讀狀態</span><span class="small muted">${failed?"暫時無法讀取":rows?`已讀 ${readCount} · 未讀 ${people.length-readCount}`:"讀取中…"}</span></summary><div class="strategy-read-members">${failed?'<p class="small muted">請收合後重新開啟策略再試。</p>':!people.length?'<p class="small muted">目前沒有策略分享對象。</p>':people.map(uid=>{const receipt=readBy.get(uid),profile=receipt||rows?.find(row=>row.uid===uid)||strategyRecipient(uid,ownerUid),photo=googlePhotoUrl(profile.photoURL),label=profile.displayName||"分享成員";return `<div class="strategy-read-member"><span class="participation-person">${photo?`<img src="${esc(photo)}" alt="" referrerpolicy="no-referrer">`:`<span class="participation-initial">${esc(label.slice(0,1))}</span>`}<span>${esc(label)}</span></span><span class="small ${receipt?"gold":"muted"}">${rows?receipt?"已讀 · "+stamp(receipt.readAt):"未讀":"讀取中…"}</span></div>`;}).join("")}</div></details>`;
+  const readers=people.filter(uid=>readBy.has(uid));
+  const avatars=readers.map(uid=>{const profile=readBy.get(uid),photo=googlePhotoUrl(profile.photoURL),label=profile.displayName||"分享成員";return `<span class="participation-person" role="img" aria-label="${esc(label)}，已讀" title="${esc(label)}">${photo?`<img src="${esc(photo)}" alt="" referrerpolicy="no-referrer">`:`<span class="participation-initial" aria-hidden="true">${esc(label.slice(0,1))}</span>`}</span>`;}).join("");
+  return `<details class="strategy-read-list" data-read-details data-owner="${esc(ownerUid)}" data-post="${esc(post.id)}"><summary><span>閱讀狀態</span><span class="small muted">${failed?"暫時無法讀取":rows?`已讀 ${readCount} · 未讀 ${people.length-readCount}`:"讀取中…"}</span></summary>${failed?'<p class="small muted">請收合後重新開啟策略再試。</p>':!rows?'<p class="small muted">正在讀取已讀狀態…</p>':!people.length?'<p class="small muted">目前沒有策略分享對象。</p>':readers.length?`<div class="strategy-read-avatars" role="group" aria-label="已讀成員">${avatars}</div>`:'<p class="small muted">目前尚無已讀成員。</p>'}</details>`;
 }
 function updateStrategyReadPanel(ownerUid,postId){
   const panel=[...document.querySelectorAll("[data-strategy-read-panel]")].find(el=>el.dataset.owner===ownerUid&&el.dataset.post===postId),post=(ownerUid===s.user?.uid?s.ownPosts:s.friendPosts).find(p=>p.id===postId);
