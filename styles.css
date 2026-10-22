@@ -624,3 +624,6 @@ form input:focus,textarea:focus,select:focus{border-color:var(--gold);outline:no
 @media(prefers-reduced-motion:reduce){.login-button-spinner{animation:none}}
 
 
+
+.strategy-read-avatars{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;max-height:160px;overflow-y:auto;overscroll-behavior:contain}
+.strategy-read-avatars .participation-person{flex-shrink:0}
