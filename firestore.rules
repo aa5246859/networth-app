@@ -31,14 +31,31 @@ service cloud.firestore {
       return strategyViewer(uid) && post.published == true &&
         (!("viewerUids" in post) || request.auth.uid in post.viewerUids);
     }
+    function validCompletion(c) {
+      return c is map && c.keys().hasAll(["outcome", "amount", "currency", "closedOn", "note"]) &&
+        c.keys().hasOnly(["outcome", "amount", "currency", "closedOn", "note"]) &&
+        c.outcome in ["profit", "loss", "flat"] && c.currency in ["TWD", "USD"] &&
+        (c.amount == null || (number(c.amount) && c.amount >= 0 && c.amount <= 9007199254740991)) &&
+        (c.outcome == "flat" ? c.amount == 0 : (c.amount == null || c.amount > 0)) &&
+        c.closedOn is string && c.closedOn.matches("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$") &&
+        c.note is string && c.note.size() <= 1000;
+    }
+    function preserveStrategyDetails() {
+      return request.method != "update" ||
+        ((!('holdingPeriod' in resource.data) || 'holdingPeriod' in request.resource.data) &&
+         (!('completion' in resource.data) || 'completion' in request.resource.data));
+    }
     function validStrategy(uid, postId, selected) {
       let p = request.resource.data;
       return p.id == postId && p.ownerUid == uid &&
-        p.keys().hasOnly(["id", "ownerUid", "ownerName", "title", "symbol", "term", "thesis", "entry", "invalidation", "target", "status", "published", "createdAt", "updatedAt"].concat(selected ? ["audienceUids", "viewerUids"] : [])) &&
+        p.keys().hasOnly(["id", "ownerUid", "ownerName", "title", "symbol", "term", "thesis", "entry", "invalidation", "target", "holdingPeriod", "completion", "status", "published", "createdAt", "updatedAt"].concat(selected ? ["audienceUids", "viewerUids"] : [])) &&
         p.title is string && p.title.size() > 0 && p.title.size() <= 100 &&
         p.symbol is string && p.symbol.size() > 0 && p.symbol.size() <= 80 &&
         p.thesis is string && p.thesis.size() > 0 && p.thesis.size() <= 4000 &&
-        p.term in ["long", "short"] && p.status in ["watching", "active", "closed"] && p.published is bool;
+        p.term in ["long", "short"] && p.status in ["watching", "active", "closed"] && p.published is bool &&
+        p.get("holdingPeriod", "") is string && p.get("holdingPeriod", "").size() <= 200 &&
+        (!("completion" in p) || (p.status == "closed" && validCompletion(p.completion))) &&
+        preserveStrategyDetails();
     }
     function validAsset(assetId) {
       let a = request.resource.data;

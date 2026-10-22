@@ -1,6 +1,7 @@
 import {before,after,beforeEach,test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
+import {parseStrategyCompletion} from '../core.js';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
 import * as firestoreSdk from 'firebase/firestore';
 import {doc,setDoc,getDoc,getDocs,updateDoc,deleteDoc,collection,query,where,writeBatch} from 'firebase/firestore';
@@ -16,7 +17,7 @@ function participationStore(database,sdk=firestoreSdk){
 }
 function strategyStore(database,uid,sdk=firestoreSdk){
   const source=readFileSync(new URL('../store.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'').replace('let sdk,db,auth,firebaseApp;','let sdk=__sdk,db=__db,auth={currentUser:{uid:__uid}},firebaseApp={};');
-  return new Function('__sdk','__db','__uid',source+'\nreturn {saveStrategy,strategies,listenStrategies,markStrategyRead,saveStrategyParticipation,deleteStrategy};')(sdk,database,uid);
+  return new Function('__sdk','__db','__uid','parseStrategyCompletion',source+'\nreturn {saveStrategy,strategies,listenStrategies,markStrategyRead,saveStrategyParticipation,deleteStrategy};')(sdk,database,uid,parseStrategyCompletion);
 }
 function interceptStrategyRead(action){
   let reads=0;
@@ -194,3 +195,41 @@ test('an edit concurrent with a manual read confirmation cannot mark the unseen 
 
 
 
+
+
+const completion={outcome:'profit',amount:1200.5,currency:'USD',closedOn:'2026-10-20',note:'Target reached'};
+test('owners can complete legacy and selected strategies while viewers only read authorized results',async()=>{
+  const owner=db('owner');
+  await assertSucceeds(updateDoc(doc(owner,'strategies/owner/posts/pub'),{holdingPeriod:'一週',status:'closed',completion}));
+  await assertSucceeds(read(db('viewer'),'strategies/owner/posts/pub'));
+  await assertFails(updateDoc(doc(db('viewer'),'strategies/owner/posts/pub'),{completion:{...completion,amount:900}}));
+  await assertFails(read(db('stranger'),'strategies/owner/posts/pub'));
+  const selected={...post('done'),published:true,status:'closed',holdingPeriod:'三年',completion,audienceUids:['viewer'],viewerUids:['viewer']};
+  await assertSucceeds(write(owner,'selectedStrategies/owner/posts/done',selected));
+  await assertSucceeds(read(db('viewer'),'selectedStrategies/owner/posts/done'));
+  await assertFails(read(db('admin'),'selectedStrategies/owner/posts/done'));
+});
+
+test('strategy rules reject invalid results and prevent an older client from erasing completion details',async()=>{
+  const owner=db('owner'),path='strategies/owner/posts/pub',done={...post('pub'),status:'closed',holdingPeriod:'日內',completion};
+  await assertSucceeds(write(owner,path,done));
+  for(const c of [{...completion,amount:-1},{...completion,amount:0},{...completion,outcome:'flat',amount:1},{...completion,currency:'BAD'},{...completion,note:'a'.repeat(1001)},{...completion,extra:true}])await assertFails(updateDoc(doc(owner,path),{completion:c}));
+  await assertSucceeds(updateDoc(doc(owner,path),{completion:{...completion,outcome:'loss',amount:null}}));
+  await assertSucceeds(updateDoc(doc(owner,path),{completion:{...completion,outcome:'flat',amount:0}}));
+  await assertFails(updateDoc(doc(owner,path),{status:'active'}));
+  const missingRecord={...done};delete missingRecord.completion;await assertFails(write(owner,path,missingRecord));
+  const missingPeriod={...done};delete missingPeriod.holdingPeriod;await assertFails(write(owner,path,missingPeriod));
+});
+
+test('actual completion storage retains responses, conflicts with stale forms and updates authorized live lists',async()=>{
+  const owner=db('owner'),repo=strategyStore(owner,'owner');
+  const original=(await read(owner,'strategies/owner/posts/pub')).data();
+  await participationStore(db('viewer')).saveStrategyParticipation({uid:'viewer'},'owner','pub','participating',original.updatedAt);
+  const saved=await repo.saveStrategy('owner',{...original,holdingPeriod:'一週',status:'closed',completion,updatedAt:'completion-v2'},original.updatedAt);
+  if(saved.status!=='closed')throw new Error('Completion was not stored');
+  const member=await read(owner,'strategyParticipation/owner/posts/pub/members/viewer');if(member.data().choice!=='participating')throw new Error('Participation was lost');
+  await assertSucceeds(read(db('viewer'),'strategies/owner/posts/pub'));
+  await assert.rejects(repo.saveStrategy('owner',{...saved,updatedAt:'stale-overwrite'},original.updatedAt),/其他裝置更新/);
+  await assertSucceeds(updateDoc(doc(owner,'strategyAccess/owner'),{viewerUids:[]}));
+  await assertFails(read(db('viewer'),'strategies/owner/posts/pub'));
+});

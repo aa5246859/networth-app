@@ -1,12 +1,12 @@
-import {id,finite,parseAsset,normalizeAsset,sharedAsset} from './core.js';
-const postKeys=['id','ownerUid','ownerName','title','symbol','term','thesis','entry','invalidation','target','status','published','createdAt','updatedAt'];
+import {id,finite,parseAsset,normalizeAsset,sharedAsset,parseStrategyCompletion} from './core.js';
+const postKeys=['id','ownerUid','ownerName','title','symbol','term','thesis','entry','invalidation','target','holdingPeriod','completion','status','published','createdAt','updatedAt'];
 const dateOK=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(new Date(value).getTime())&&new Date(value).toISOString().slice(0,10)===value;
 export function buildBackup(state){
   const {goal,targetDate,monthly}=state.settings;
-  return {version:2,exportedAt:new Date().toISOString(),settings:{goal,targetDate,monthly},assets:state.assets.map(sharedAsset),history:state.history.map(({date,total})=>({date,total})),strategies:state.ownPosts.map(p=>Object.fromEntries(postKeys.filter(k=>p[k]!==undefined).map(k=>[k,p[k]])))};
+  return {version:3,exportedAt:new Date().toISOString(),settings:{goal,targetDate,monthly},assets:state.assets.map(sharedAsset),history:state.history.map(({date,total})=>({date,total})),strategies:state.ownPosts.map(p=>Object.fromEntries(postKeys.filter(k=>p[k]!==undefined).map(k=>[k,p[k]])))};
 }
 export function parseBackup(data){
-  if(!data||!Array.isArray(data.assets)||!Array.isArray(data.history)||data.assets.length>1000||data.history.length>5000||(data.version!=null&&![1,2].includes(data.version)))throw new Error('不是有效或支援的資產備份。');
+  if(!data||!Array.isArray(data.assets)||!Array.isArray(data.history)||data.assets.length>1000||data.history.length>5000||(data.version!=null&&![1,2,3].includes(data.version)))throw new Error('不是有效或支援的資產備份。');
   const assets=data.assets.map(raw=>{
     if(!raw||typeof raw.name!=='string'||!['manual','stock','tw','crypto','usd'].includes(raw.mode))throw new Error('備份中有無效資產，尚未匯入。');
     const old=normalizeAsset(raw,data.quotes);
@@ -30,6 +30,8 @@ export function parseBackup(data){
     const post={id:id(),published:false};
     for(const [key,max,required] of [['title',100,true],['symbol',80,true],['thesis',4000,true],['entry',4000,false],['invalidation',4000,false],['target',4000,false]]){const value=raw?.[key]??'';if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw new Error('備份中的策略文字無效。');post[key]=value.trim();}
     if(!['long','short'].includes(raw.term)||!['watching','active','closed'].includes(raw.status))throw new Error('備份中的策略週期或狀態無效。');
+    if(raw.holdingPeriod!=null){if(typeof raw.holdingPeriod!=='string'||raw.holdingPeriod.length>200)throw new Error('備份中的持有時間無效。');post.holdingPeriod=raw.holdingPeriod.trim();}
+    if(raw.completion!=null){if(raw.status!=='closed')throw new Error('備份中的結單紀錄與策略狀態不一致。');post.completion=parseStrategyCompletion(raw.completion);}
     post.term=raw.term;post.status=raw.status;post.createdAt=raw.createdAt&&finite(new Date(raw.createdAt).getTime())?raw.createdAt:new Date().toISOString();post.updatedAt=new Date().toISOString();return post;
   });
   return {assets,history,settings,strategies};

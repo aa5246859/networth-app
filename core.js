@@ -162,3 +162,27 @@ export function parseAsset(fields, previous = null) {
   return a;
 }
 
+export function parseStrategyCompletion(fields,today=taipeiDay()) {
+  const {outcome,currency,closedOn}=fields||{};
+  if(!["profit","loss","flat"].includes(outcome))throw new Error("請選擇獲利、虧損或損益兩平。");
+  if(!["TWD","USD"].includes(currency))throw new Error("請選擇台幣或美元。");
+  if(typeof closedOn!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(closedOn)||!finite(Date.parse(closedOn))||new Date(closedOn).toISOString().slice(0,10)!==closedOn||closedOn>today)throw new Error("請填有效的結單日期，日期不能晚於今天。");
+  const raw=fields.amount,empty=raw==null||String(raw).trim()==="";
+  if(raw!=null&&typeof raw!=="number"&&typeof raw!=="string")throw new Error("結單金額格式無效。");
+  let amount=empty?null:Number(raw);
+  if(!empty&&(!finite(amount)||amount<0||amount>Number.MAX_SAFE_INTEGER))throw new Error("結單金額請填有效的正數，獲利或虧損由結果選項決定。");
+  if(outcome==="flat"){if(amount!=null&&amount!==0)throw new Error("損益兩平的金額應為 0。");amount=0;}
+  else if(amount===0)throw new Error("金額為 0 時，請選擇損益兩平；尚未確認金額可先留空。");
+  if(fields.note!=null&&typeof fields.note!=="string")throw new Error("結單備註格式無效。");
+  const note=(fields.note||"").trim();if(note.length>1000)throw new Error("結單備註最多 1,000 字。");
+  return {outcome,amount,currency,closedOn,note};
+}
+export function strategyCompletion(post) {
+  if(post?.status!=="closed"||!post.completion)return null;
+  try{return parseStrategyCompletion(post.completion,"9999-12-31");}catch{return null;}
+}
+export function applyStrategyCompletion(post,fields,now=new Date().toISOString()) {
+  if(!post?.id)throw new Error("找不到這份策略，請重新開啟。");
+  return {...post,status:"closed",completion:parseStrategyCompletion(fields,taipeiDay(new Date(now))),updatedAt:now};
+}
+

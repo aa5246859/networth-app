@@ -20,11 +20,10 @@
     {
       "start": "function openStrategy(",
       "end": "$(\"strategyForm\").onsubmit=",
-      "hash": "08a932a62722c387f3f49b23081df1bd58423bf925a0395f5b4e29e91506a1f5"
+      "hash": "e226bca7550480e557a6f2db932f8942b82ccaebc302d8342aeb7ad56d97ba3c"
     }
   ],
   "strategyHash": "054ac634a97a452062b5ff0272a2e54d4d51d6c31173784c8b48df7a12f29d21",
   "htmlHash": "e59cca7b17264812bff19d05679f857f2a21df5c40e202cee84ed973360da3be",
   "rulesHash": "7a78b2d52f4c2a210c4178726dc33b32c0e1e99c71eff3a344753b2cd54e6f19"
 }
-
