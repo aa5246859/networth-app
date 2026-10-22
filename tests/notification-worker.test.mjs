@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../notification-worker/worker.js';
+import {strategyNotificationContent} from '../notification-worker/strategy-notice.js';
 const env={APP_ORIGIN:'https://wealth.example'};
+test('completion push shows the saved outcome, while legacy closed records never invent a result',()=>{
+  const fields={title:{stringValue:'MSTR 長線'},symbol:{stringValue:'MSTR'},status:{stringValue:'closed'}};
+  for(const [outcome,label] of [['profit','獲利'],['loss','虧損'],['flat','損益兩平']]){
+    const notice=strategyNotificationContent({fields:{...fields,completion:{mapValue:{fields:{outcome:{stringValue:outcome}}}}}});
+    assert.deepEqual(notice,{title:'策略已結單 · '+label,body:'MSTR 長線 · MSTR'});
+  }
+  assert.equal(strategyNotificationContent({fields}).title,'策略已結單');
+  assert.equal(strategyNotificationContent({fields:{...fields,status:{stringValue:'active'}}}).title,'交易策略更新');
+});
 test('notification Worker only accepts requests from the configured App origin',async()=>{
   const response=await worker.fetch(new Request('https://worker.example/register',{method:'POST',headers:{Origin:'https://attacker.example'}}),env);
   assert.equal(response.status,403);
@@ -40,17 +50,17 @@ test('notification registration stores the verified Firebase email and never bin
 test('failed strategy notifications can retry; successful devices deduplicate per strategy version',async(t)=>{
   const {generateKeyPairSync}=await import('node:crypto');
   const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
-  let version='v2',fcmAttempts=0,fail=true;const events=new Set(),pushUrls=[];
+  let version='v2',fcmAttempts=0,fail=true,status='active',outcome='';const events=new Set(),pushUrls=[],pushTitles=[];
   const doc=fields=>({fields});
   t.mock.method(globalThis,'fetch',async(url,options)=>{
     const path=String(url);
     if(path.includes('accounts:lookup'))return Response.json({users:[{localId:'author',email:'aaz52468599@gmail.com',emailVerified:true}]});
     if(path.includes('/selectedStrategies/'))return Response.json({error:{status:'NOT_FOUND'}},{status:404});
-    if(path.includes('/strategies/'))return Response.json(doc({ownerUid:{stringValue:'author'},id:{stringValue:'p1'},published:{booleanValue:true},updatedAt:{stringValue:version},title:{stringValue:'Test'},symbol:{stringValue:'BTC'},term:{stringValue:'short'}}));
+    if(path.includes('/strategies/'))return Response.json(doc({ownerUid:{stringValue:'author'},id:{stringValue:'p1'},published:{booleanValue:true},updatedAt:{stringValue:version},title:{stringValue:'Test'},symbol:{stringValue:'BTC'},term:{stringValue:'short'},status:{stringValue:status},completion:{mapValue:{fields:{outcome:{stringValue:outcome}}}}}));
     if(path.includes('/strategyAccess/'))return Response.json(doc({viewerUids:{arrayValue:{values:[{stringValue:'member'}]}}}));
     if(path.includes('/access/'))return Response.json(doc({status:{stringValue:'approved'}}));
     if(path.includes('oauth2.googleapis.com'))return Response.json({access_token:'test-service-token'});
-    if(path.includes('messages:send')){pushUrls.push(JSON.parse(options.body).message.data.url);fcmAttempts++;return fail?Response.json({error:{status:'PERMISSION_DENIED'}},{status:403}):Response.json({name:'accepted'});}
+    if(path.includes('messages:send')){const data=JSON.parse(options.body).message.data;pushUrls.push(data.url);pushTitles.push(data.title);fcmAttempts++;return fail?Response.json({error:{status:'PERMISSION_DENIED'}},{status:403}):Response.json({name:'accepted'});}
     throw new Error('Unexpected request '+path);
   });
   const DB={prepare(sql){let args;return {bind(...values){args=values;assert.ok(values.every(v=>v!==undefined));return this},async all(){return {results:[{uid:'member',device_id:'phone',email:'member@example.com',token:'test-device-token'}]}},async first(){return events.has(args[0])?{event_key:args[0]}:null},async run(){if(sql.startsWith('INSERT'))events.add(args[0]);return {meta:{changes:1}}}}}};
@@ -61,6 +71,9 @@ test('failed strategy notifications can retry; successful devices deduplicate pe
   const retry=await (await worker.fetch(request(),testEnv)).json();assert.equal(retry.sent,1);assert.equal(retry.failed,0);assert.equal(events.size,1);
   const repeat=await (await worker.fetch(request(),testEnv)).json();assert.equal(repeat.duplicate,1);assert.equal(fcmAttempts,2);
   version='v3';const edited=await (await worker.fetch(request(),testEnv)).json();assert.equal(edited.sent,1);assert.equal(fcmAttempts,3);assert.ok(pushUrls.every(url=>url==='./#sharing?owner=author&post=p1&term=short'));
+  status='closed';
+  for(const [result,label]of [['profit','獲利'],['loss','虧損'],['flat','損益兩平']]){outcome=result;version='closed-'+result;const completed=await (await worker.fetch(request(),testEnv)).json();assert.equal(completed.sent,1);assert.equal(pushTitles.at(-1),'策略已結單 · '+label);}
+  assert.ok(pushUrls.every(url=>url==='./#sharing?owner=author&post=p1&term=short'));
 });
 
 test('strategy notifications use the intersection of selected recipients and active access, ignoring client-supplied recipients',async(t)=>{

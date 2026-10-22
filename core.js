@@ -183,6 +183,10 @@ export function strategyCompletion(post) {
 }
 export function applyStrategyCompletion(post,fields,now=new Date().toISOString()) {
   if(!post?.id)throw new Error("找不到這份策略，請重新開啟。");
-  return {...post,status:"closed",completion:parseStrategyCompletion(fields,taipeiDay(new Date(now))),updatedAt:now};
+  const previous=strategyCompletion(post),input={...fields};
+  // Keep legacy records valid without asking for an amount in the result form.
+  if(!Object.hasOwn(input,"amount"))input.amount=input.outcome==="flat"?0:previous?.outcome===input.outcome?previous.amount:null;
+  if(!Object.hasOwn(input,"currency"))input.currency=previous?.currency||"TWD";
+  return {...post,status:"closed",completion:parseStrategyCompletion(input,taipeiDay(new Date(now))),updatedAt:now};
 }
 

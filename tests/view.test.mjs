@@ -20,8 +20,8 @@ function harness(code=source,overrides={}){
   const cloud=new Proxy({isAdmin:()=>false}, {get:(target,key)=>target[key]||(()=>{calls.push(key);throw new Error('Demo must never call cloud: '+key);})});
   const notifications={notificationStatus:()=>({configured:false,permission:'default',prefs:{strategy:true,daily:true},subscribed:false}),appOpened:async()=>{},strategyPublished:async()=>{},enableNotifications:async()=>{},disableNotifications:async()=>{},updateNotificationPreferences:async()=>{}};
   const context={...review,...core,...backup,VERSION,DEFAULT_SETTINGS,icon,cloud,notifications,refreshMarket:()=>{throw new Error('Demo must never call a market API');},document:{getElementById:name=>{if(!nodes.has(name))throw new Error('Missing element: '+name);return nodes.get(name);},querySelectorAll:()=>[],addEventListener(){},body:{classList:{add(){},remove(){}}}},window:{addEventListener(){},scrollTo(){}},location:{search:'?demo=1',hash:''},navigator:{},URLSearchParams,URL,crypto:webcrypto,structuredClone,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},console,...overrides};
-  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message,strategyReadPanel,strategyAudienceEditor,markStrategyRead,subscribeStrategyReads,stopStrategyReads,syncStrategyList,openCompletion,saveCompletion,completionPreview});',context);
-  return {api,nodes,calls};
+  const api=vm.runInNewContext(code+'\n({s,render,sharing,startDemo,stopSession,loadSharing,publish,refreshOwn,saveSnapshot,assetRows,openAsset,setAssetMode,assetIcon,avatarContent,installedMode,changeHistoryPage,admin,renderAdminUsers,openStrategy,handleReviewAction,strategyReviewHtml,loadVisibleReviews,setParticipation,subscribeParticipation,stopParticipation,participationPanel,message,strategyReadPanel,strategyAudienceEditor,markStrategyRead,subscribeStrategyReads,stopStrategyReads,syncStrategyList,openCompletion,saveCompletion,completionPreview,queueStrategyRead,resumeStrategyReads,strategyReadVisible});',context);
+  return {api,nodes,calls,context};
 }
 test('premarket labels reuse the existing owner, shared and aggregate markup without adding controls',()=>{
   const {api}=harness();
@@ -244,19 +244,19 @@ test('author read status counts the selected audience, resets after edits, and i
   api.s.strategyAccess.viewerUids=['two'];panel=api.strategyReadPanel(post,owner);assert.match(panel,/已讀 0 · 未讀 1/);assert.doesNotMatch(panel,/讀者一/);
 });
 
-test('viewer read confirmation is manual, covers the current revision only, and does not change participation',async()=>{
+test('automatic read status covers the current revision only and does not change participation',async()=>{
   const {api}=harness(),owner='friend',user=api.s.user,post={id:'read-post',published:true,audienceUids:[user.uid],updatedAt:'v1'};
   api.s.friend=owner;api.s.friendPosts=[post];api.s.strategyReads[owner+'/read-post']=[];api.s.participation[owner+'/read-post']=[{uid:user.uid,choice:'not-participating'}];
-  assert.match(api.strategyReadPanel(post,owner),/這次更新尚未標記已讀/);
+  assert.match(api.strategyReadPanel(post,owner),/會自動記錄已讀/);
   await api.markStrategyRead({dataset:{owner,id:post.id}});
-  assert.match(api.strategyReadPanel(post,owner),/>已讀<\/button>/);assert.equal(api.s.participation[owner+'/read-post'][0].choice,'not-participating');
-  post.updatedAt='v2';assert.match(api.strategyReadPanel(post,owner),/標記已讀/);assert.equal(api.s.strategyReads[owner+'/read-post'][0].strategyUpdatedAt,'v1');
+  assert.match(api.strategyReadPanel(post,owner),/已自動記錄已讀/);assert.equal(api.s.participation[owner+'/read-post'][0].choice,'not-participating');
+  post.updatedAt='v2';assert.match(api.strategyReadPanel(post,owner),/會自動記錄已讀/);assert.equal(api.s.strategyReads[owner+'/read-post'][0].strategyUpdatedAt,'v1');
 });
 
 test('read receipt completion after account change cannot populate the next account',async()=>{
   let finish;const {api}=harness(source,{cloud:{isAdmin:()=>false,markStrategyRead:()=>new Promise(resolve=>finish=resolve)}});
   const owner='friend',post={id:'p',published:true,updatedAt:'r1'};api.s.demo=false;api.s.friend=owner;api.s.friendPosts=[post];
-  const saving=api.markStrategyRead({dataset:{owner,id:post.id}});api.stopSession();api.s.user={uid:'next'};finish({uid:'demo-self',strategyUpdatedAt:'r1'});await saving;
+  const saving=api.markStrategyRead({dataset:{owner,id:post.id}});await Promise.resolve();api.stopSession();api.s.user={uid:'next'};finish({uid:'demo-self',strategyUpdatedAt:'r1'});await saving;
   assert.equal(Object.keys(api.s.strategyReads).length,0);
 });
 
@@ -297,9 +297,9 @@ test('completed strategies remain discoverable and show a result without alterin
   const {api,nodes}=harness();api.startDemo();api.s.page='sharing';api.s.sharingTab='long';
   const post=api.s.ownPosts.find(p=>p.term==='long'),assets=JSON.stringify(api.s.assets),history=JSON.stringify(api.s.history),key=api.s.user.uid+'/'+post.id;
   api.s.participation[key]=[{uid:'demo-friend',choice:'participating',displayName:'Friend'}];api.openCompletion(post.id);
-  await api.saveCompletion({outcome:'profit',amount:'1234.50',currency:'USD',closedOn:core.taipeiDay(),note:'<img src=x onerror=alert(1)>\n出場心得'});
+  await api.saveCompletion({outcome:'profit',closedOn:core.taipeiDay(),note:'<img src=x onerror=alert(1)>\n出場心得'});
   assert.equal(api.s.strategyStatus,'closed');assert.equal(api.s.ownPosts.find(p=>p.id===post.id).status,'closed');assert.equal(JSON.stringify(api.s.assets),assets);assert.equal(JSON.stringify(api.s.history),history);assert.equal(api.s.participation[key][0].choice,'participating');
-  const content=nodes.get('content').innerHTML;assert.match(content,/獲利 · \+US\$ 1,234.5/);assert.match(content,/&lt;img/);assert.ok(!content.includes('<img src=x'));
+  const content=nodes.get('content').innerHTML;assert.match(content,/>獲利<\/span>/);assert.ok(!content.includes("金額未填"));assert.ok(!content.includes("1,234.5"));assert.match(content,/&lt;img/);assert.ok(!content.includes('<img src=x'));
   api.s.strategyStatus='open';api.render();assert.ok(!nodes.get('content').innerHTML.includes('data-strategy-post="'+post.id+'"'));
   api.s.strategyStatus='closed';api.render();assert.ok(nodes.get('content').innerHTML.includes('data-strategy-post="'+post.id+'"'));
   api.openStrategy(post.id);assert.equal(nodes.get('strategyForm').elements.holdingPeriod.value,post.holdingPeriod);assert.equal(nodes.get('strategyForm').elements.status.disabled,true);
@@ -308,6 +308,69 @@ test('completed strategies remain discoverable and show a result without alterin
 test('shared completed results are read-only and legacy completed records never claim zero profit',()=>{
   const {api,nodes}=harness();api.startDemo();api.s.page='sharing';api.s.friend='demo-friend';api.s.sharingTab='long';api.s.strategyStatus='closed';
   api.s.friendPosts=api.s.friendPosts.map(post=>({...post,status:'closed',holdingPeriod:'三年',completion:{outcome:'loss',amount:null,currency:'TWD',closedOn:core.taipeiDay(),note:'Review'}}));api.render();
-  let content=nodes.get('content').innerHTML;assert.match(content,/虧損 · 金額未填/);assert.match(content,/預期持有時間/);assert.ok(!content.includes('data-action="complete-strategy"'));assert.ok(!content.includes('data-action="edit-strategy"'));
+  let content=nodes.get('content').innerHTML;assert.match(content,/>虧損<\/span>/);assert.ok(!content.includes("金額未填"));assert.match(content,/預期持有時間/);assert.ok(!content.includes('data-action="complete-strategy"'));assert.ok(!content.includes('data-action="edit-strategy"'));
   delete api.s.friendPosts[0].completion;api.render();content=nodes.get('content').innerHTML;assert.match(content,/尚未填寫結單結果/);assert.ok(!content.includes('獲利 · NT$ 0'));
+});
+
+function automaticReader(){
+  const h=harness(),{api,context}=h,owner='auto-author',uid=api.s.user.uid;
+  const post={id:'auto-post',ownerUid:owner,term:'long',title:'Plan',published:true,audienceUids:[uid],status:'active',updatedAt:'v1'};
+  api.s.page='sharing';api.s.sharingTab='long';api.s.friend=owner;api.s.friendPosts=[post];api.s.friends=[{id:owner,strategyAccess:true}];api.s.strategyReads[owner+'/'+post.id]=[];
+  let rect={top:200,bottom:300,left:20,right:370,width:350,height:100},covered=false;
+  const target={getBoundingClientRect:()=>rect},card={open:true,isConnected:true,dataset:{strategyOwner:owner,strategyPost:post.id},querySelector:selector=>selector==='.strategy-reason'?target:null};
+  context.document.visibilityState='visible';context.window.innerHeight=844;context.window.innerWidth=390;
+  context.document.querySelectorAll=selector=>selector==='details[data-strategy-post][open]'?(card.open&&card.isConnected?[card]:[]):selector==='dialog[open]'&&covered?[{}]:[];
+  const timers=new Map();let next=1;
+  context.setTimeout=fn=>{const id=next++;timers.set(id,fn);return id;};context.clearTimeout=id=>timers.delete(id);
+  const observers=[];context.IntersectionObserver=class{constructor(callback){this.notify=callback;observers.push(this);}observe(){}disconnect(){this.stopped=true;}};
+  return {...h,owner,uid,post,card,observers,timers,key:owner+'/'+post.id,setRect:value=>rect={...rect,...value},cover:value=>covered=value,
+    async flush(){const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());await new Promise(resolve=>setImmediate(resolve));}};
+}
+
+test('automatic reading waits for expanded visible content and never changes participation',async()=>{
+  const h=automaticReader(),{api,owner,post,card,key,uid}=h;
+  api.s.participation[key]=[{uid,choice:'not-participating'}];card.open=false;api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+  card.open=true;h.setRect({top:1000,bottom:1100});api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+  h.setRect({top:200,bottom:300});h.observers.at(-1).notify();await h.flush();assert.equal(api.s.strategyReads[key][0].strategyUpdatedAt,'v1');assert.equal(api.s.participation[key][0].choice,'not-participating');
+  api.queueStrategyRead(owner,post.id);assert.equal(h.timers.size,0);assert.doesNotMatch(api.strategyReadPanel(post,owner),/<button/);
+});
+
+test('hidden tabs, modal overlays, collapsed cards and revoked sharing cannot mark unseen content read',async()=>{
+  const h=automaticReader(),{api,context,owner,post,card,key}=h;
+  api.queueStrategyRead(owner,post.id);context.document.visibilityState='hidden';await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+  context.document.visibilityState='visible';h.cover(true);api.resumeStrategyReads();await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+  h.cover(false);api.resumeStrategyReads();card.open=false;await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+  card.open=true;api.s.demo=false;api.s.friends=[];api.resumeStrategyReads();await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+  api.s.friends=[{id:owner,strategyAccess:true}];post.audienceUids=[];api.resumeStrategyReads();await h.flush();assert.equal(api.s.strategyReads[key].length,0);
+});
+
+test('automatic receipts require fresh visible content for each revision and disconnect after leaving',async()=>{
+  const h=automaticReader(),{api,owner,post,card,key}=h;
+  api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(api.s.strategyReads[key][0].strategyUpdatedAt,'v1');
+  post.updatedAt='v2';h.setRect({top:1000,bottom:1100});api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(api.s.strategyReads[key][0].strategyUpdatedAt,'v1');assert.equal(h.observers[0].stopped,true);
+  h.setRect({top:200,bottom:300});api.resumeStrategyReads();await h.flush();assert.equal(api.s.strategyReads[key][0].strategyUpdatedAt,'v2');
+  post.updatedAt='v3';api.queueStrategyRead(owner,post.id);card.isConnected=false;api.resumeStrategyReads();await h.flush();assert.equal(api.s.strategyReads[key][0].strategyUpdatedAt,'v2');assert.equal(api.s.strategyAutoReads.size,0);
+});
+
+test('in-flight automatic receipts deduplicate and stale completions cannot replace newer receipts',async()=>{
+  const h=automaticReader(),{api,context,owner,post,key,uid}=h,pending=[];
+  api.s.demo=false;context.cloud={isAdmin:()=>false,markStrategyRead:(_user,_owner,_post,version)=>new Promise(resolve=>pending.push({version,resolve}))};
+  api.queueStrategyRead(owner,post.id);await h.flush();api.resumeStrategyReads();await h.flush();assert.equal(pending.length,1);
+  post.updatedAt='v2';api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(pending.length,2);
+  pending[1].resolve({uid,strategyUpdatedAt:'v2'});await new Promise(resolve=>setImmediate(resolve));pending[0].resolve({uid,strategyUpdatedAt:'v1'});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(api.s.strategyReads[key][0].strategyUpdatedAt,'v2');assert.equal(api.s.strategyReadWrites.size,0);
+});
+
+test('automatic receipt failures remain quiet, avoid retry loops and retry on a later reopening',async()=>{
+  const h=automaticReader(),{api,context,owner,post,key,nodes}=h;let calls=0;
+  api.s.demo=false;context.cloud={isAdmin:()=>false,markStrategyRead:async()=>{calls++;throw new Error('offline');}};
+  api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(calls,1);assert.equal(api.s.strategyAutoReadErrors[key],'v1');assert.doesNotMatch(nodes.get('toast').textContent,/offline/);
+  api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(calls,1);
+  api.stopStrategyReads(owner,post.id);api.queueStrategyRead(owner,post.id);await h.flush();assert.equal(calls,2);
+  api.stopSession();assert.equal(h.timers.size,0);assert.equal(api.s.strategyAutoReads.size,0);
+});
+
+test('completion form asks only for a result, date and note',()=>{
+  const form=html.match(/<form id="completionForm"[\s\S]*?<\/form>/)[0];
+  assert.doesNotMatch(form,/name="(?:amount|currency)"/);assert.match(form,/name="outcome"/);assert.match(form,/name="closedOn"/);assert.match(form,/name="note"/);
 });

@@ -300,7 +300,7 @@ export async function markStrategyRead(user,ownerUid,postId,expectedUpdatedAt){
     const {snapshot}=await currentStrategy(ownerUid,postId,ref=>tx.get(ref));
     if(!snapshot.exists()||snapshot.data().published!==true)throw new Error("這份策略已刪除或停止分享。");
     const post={...snapshot.data(),id:postId};
-    if(typeof expectedUpdatedAt!=="string"||post.updatedAt!==expectedUpdatedAt){const error=new Error("策略剛剛已更新，請閱讀最新內容後再按已讀。");error.latestPost=post;throw error;}
+    if(typeof expectedUpdatedAt!=="string"||post.updatedAt!==expectedUpdatedAt){const error=new Error("策略剛剛已更新，請再次展開並閱讀最新內容。");error.latestPost=post;throw error;}
     const entry={strategyUpdatedAt:post.updatedAt,displayName:(user.displayName||"使用者").slice(0,80),photoURL:user.photoURL||"",readAt:new Date().toISOString()};
     tx.set(d("strategyReads",ownerUid,"posts",postId,"members",user.uid),entry);
     return {...entry,uid:user.uid};

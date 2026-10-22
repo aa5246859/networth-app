@@ -1,4 +1,5 @@
 import {premarketQuotes,limitedJson} from "./premarket.js";
+import {strategyNotificationContent} from "./strategy-notice.js";
 const cors=(env)=>({"Access-Control-Allow-Origin":env.APP_ORIGIN,"Access-Control-Allow-Methods":"POST, OPTIONS","Access-Control-Allow-Headers":"Authorization, Content-Type","Vary":"Origin"});
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8",...headers}});
 const taipeiDay=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
@@ -93,7 +94,8 @@ async function handle(request,env){
           if(!await authorizedRecipient(device,env,user)){skipped++;continue;}
           const previous=await env.DB.prepare("SELECT event_key FROM sent_events WHERE event_key=?").bind(deliveryKey).first();
           if(previous){duplicate++;continue;}
-          await send(env,device,"交易策略更新",fieldString(post,"title")+" · "+fieldString(post,"symbol"),eventKey,"./#sharing?"+new URLSearchParams({owner:user.uid,post:body.postId,term:fieldString(post,"term")||"long"}).toString());
+          const notice=strategyNotificationContent(post);
+          await send(env,device,notice.title,notice.body,eventKey,"./#sharing?"+new URLSearchParams({owner:user.uid,post:body.postId,term:fieldString(post,"term")||"long"}).toString());
           await env.DB.prepare("INSERT OR IGNORE INTO sent_events(event_key,sent_at) VALUES(?,?)").bind(deliveryKey,now).run();sent++;
         }catch(error){failed++;errors.push(error?.message||"通知傳送失敗。");console.error(error?.message||error)}
       }

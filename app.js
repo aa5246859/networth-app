@@ -1,12 +1,12 @@
 import {reviewState,createReview,castReviewVote,teacherDecisionState} from './review.js?v=2.4.19';
-import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.33";
+import {VERSION,DEFAULT_SETTINGS} from "./config.js?v=2.4.34";
 import {TYPES,finite,costAmount,isRealized,id,taipeiDay,stamp,num,money,compact,signed,esc,normalizeAsset,valuation,portfolio,aggregateHoldings,requiredRates,sharedAsset,parseAsset,parseStrategyCompletion,strategyCompletion,applyStrategyCompletion} from "./core.js";
-import {refreshMarket} from "./quotes.js?v=2.4.33";
+import {refreshMarket} from "./quotes.js?v=2.4.34";
 import {icon} from "./icons.js";
 import {buildBackup,parseBackup} from "./backup.js";
-import * as cloud from "./store.js?v=2.4.33";
-import * as notifications from "./notifications.js?v=2.4.33";
-import {stockPremarket} from "./premarket-client.js?v=2.4.33";
+import * as cloud from "./store.js?v=2.4.34";
+import * as notifications from "./notifications.js?v=2.4.34";
+import {stockPremarket} from "./premarket-client.js?v=2.4.34";
 
 const $=name=>document.getElementById(name);
 const renderedHeaderHtml=new WeakMap();
@@ -17,7 +17,7 @@ const s={user:null,demo:false,page:"home",assets:[],history:[],settings:{...DEFA
 let firebaseReady=false,toastTimer,editingAsset=null,editingPost=null,completingPost=null,pendingConfirmation=null,authUnsubscribe=null,adminRequest=null;
 
 // Strategy lists and read receipts are separate from participation responses.
-Object.assign(s,{strategyReads:{},strategyReadErrors:{},strategyReadUnsubs:new Map(),strategyListOff:null,strategyListKey:"",strategyListGeneration:0,strategyListRevision:0,strategyStatus:"open"});
+Object.assign(s,{strategyReads:{},strategyReadErrors:{},strategyReadUnsubs:new Map(),strategyAutoReads:new Map(),strategyReadWrites:new Map(),strategyAutoReadErrors:{},strategyListOff:null,strategyListKey:"",strategyListGeneration:0,strategyListRevision:0,strategyStatus:"open"});
 let loginState="idle";
 function setLoginState(state,error=""){
   loginState=state;
@@ -189,7 +189,8 @@ function strategyReadPanel(post,ownerUid){
   const key=participationKey(ownerUid,post.id),rows=s.strategyReads[key]||(s.demo?[]:undefined),failed=s.strategyReadErrors[key];
   if(ownerUid!==s.user?.uid){
     const read=rows?.some(row=>row.uid===s.user?.uid&&row.strategyUpdatedAt===post.updatedAt);
-    return `<div class="strategy-read-status"><span class="small muted">${failed?"已讀狀態暫時無法讀取":rows?read?"你已閱讀這次更新":"這次更新尚未標記已讀":"正在讀取已讀狀態…"}</span><button class="button secondary" data-action="strategy-read" data-owner="${esc(ownerUid)}" data-id="${esc(post.id)}" ${read||!rows||failed?"disabled":""}>${read?"已讀":"標記已讀"}</button></div>`;
+    const retry=s.strategyAutoReadErrors[key]===post.updatedAt;
+    return `<div class="strategy-read-status" role="status"><span class="small muted">${failed?"已讀狀態暫時無法讀取":read?"已自動記錄已讀 · 這次更新":retry?"已讀尚未同步，重新展開時會再試":rows?"展開並查看內容後，會自動記錄已讀":"正在讀取已讀狀態…"}</span></div>`;
   }
   const people=strategyAudience(post,ownerUid),readBy=new Map((rows||[]).filter(row=>row.strategyUpdatedAt===post.updatedAt).map(row=>[row.uid,row]));
   const readCount=people.filter(uid=>readBy.has(uid)).length;
@@ -201,25 +202,78 @@ function updateStrategyReadPanel(ownerUid,postId){
 }
 function subscribeStrategyReads(ownerUid,postId){
   const key=participationKey(ownerUid,postId),post=(ownerUid===s.user?.uid?s.ownPosts:s.friendPosts).find(p=>p.id===postId);
-  if(s.demo||s.strategyReadUnsubs.has(key)||!post?.published)return;
+  if(!post?.published)return;
+  queueStrategyRead(ownerUid,postId);
+  if(s.demo||s.strategyReadUnsubs.has(key))return;
   const session=s.session;let active=true,off=null;const stop=()=>{active=false;off?.();};
   const fail=()=>{if(!active||session!==s.session)return;stop();if(s.strategyReadUnsubs.get(key)===stop)s.strategyReadUnsubs.delete(key);s.strategyReadErrors[key]=true;updateStrategyReadPanel(ownerUid,postId);};
   s.strategyReadUnsubs.set(key,stop);delete s.strategyReadErrors[key];
-  try{off=cloud.listenStrategyReads(ownerUid,postId,s.user.uid,rows=>{if(!active||session!==s.session)return;s.strategyReads[key]=rows;delete s.strategyReadErrors[key];updateStrategyReadPanel(ownerUid,postId);},fail);if(!active)off?.();}catch{fail();}
+  try{off=cloud.listenStrategyReads(ownerUid,postId,s.user.uid,rows=>{if(!active||session!==s.session)return;s.strategyReads[key]=rows;delete s.strategyReadErrors[key];updateStrategyReadPanel(ownerUid,postId);queueStrategyRead(ownerUid,postId);},fail);if(!active)off?.();}catch{fail();}
 }
-function stopStrategyReads(ownerUid,postId){const key=participationKey(ownerUid,postId);s.strategyReadUnsubs.get(key)?.();s.strategyReadUnsubs.delete(key);}
-async function markStrategyRead(button){
-  const session=s.session,user=s.user,ownerUid=button.dataset.owner,postId=button.dataset.id,posts=ownerUid===user?.uid?s.ownPosts:s.friendPosts,post=posts.find(p=>p.id===postId);
-  if(!user||!post?.published)throw new Error("請重新開啟策略後再標記已讀。");
-  let entry={uid:user.uid,strategyUpdatedAt:post.updatedAt,displayName:user.displayName||"使用者",photoURL:user.photoURL||"",readAt:new Date().toISOString()};
-  if(!s.demo)try{entry=await cloud.markStrategyRead(user,ownerUid,postId,post.updatedAt);}catch(error){
-    if(session!==s.session||user.uid!==s.user?.uid)return;
-    if(error.latestPost){const index=posts.findIndex(p=>p.id===postId);if(index>=0&&posts[index].updatedAt===post.updatedAt)posts[index]=error.latestPost;render();}
-    throw error;
+function stopAutoStrategyRead(ownerUid,postId){
+  const key=participationKey(ownerUid,postId),job=s.strategyAutoReads.get(key);
+  if(job){clearTimeout(job.timer);job.observer?.disconnect();s.strategyAutoReads.delete(key);}
+  delete s.strategyAutoReadErrors[key];
+}
+function stopStrategyReads(ownerUid,postId){const key=participationKey(ownerUid,postId);stopAutoStrategyRead(ownerUid,postId);s.strategyReadUnsubs.get(key)?.();s.strategyReadUnsubs.delete(key);}
+function strategyReadVisible(job){
+  const post=s.friendPosts.find(p=>p.id===job.postId);
+  if(job.session!==s.session||job.uid!==s.user?.uid||s.page!=="sharing"||s.friend!==job.ownerUid||s.sharingTab!==post?.term||!post.published||post.updatedAt!==job.version||!job.card.isConnected||!job.card.open||document.visibilityState!=="visible"||document.querySelectorAll("dialog[open]").length)return false;
+  if(!s.demo&&!s.friends.some(friend=>friend.id===job.ownerUid&&friend.strategyAccess))return false;
+  if(Array.isArray(post.audienceUids)&&!post.audienceUids.includes(job.uid))return false;
+  const rect=job.target.getBoundingClientRect(),height=window.innerHeight,width=window.innerWidth;
+  const header=document.querySelectorAll(".topbar")[0]?.getBoundingClientRect(),nav=document.querySelectorAll("#navigation")[0]?.getBoundingClientRect();
+  const top=header&&header.top<=0?Math.max(0,header.bottom):0,bottom=nav&&nav.width>=width*.7&&nav.top>height*.5?Math.min(height,nav.top):height;
+  return rect.height>0&&rect.width>0&&rect.bottom>top&&rect.top<bottom&&rect.right>0&&rect.left<width;
+}
+function armStrategyRead(job){
+  clearTimeout(job.timer);job.timer=null;
+  const key=participationKey(job.ownerUid,job.postId),rows=s.strategyReads[key];
+  if(s.strategyAutoReads.get(key)!==job||s.strategyReadErrors[key]||(!s.demo&&!rows)||rows?.some(row=>row.uid===job.uid&&row.strategyUpdatedAt===job.version)||s.strategyAutoReadErrors[key]===job.version||!strategyReadVisible(job))return;
+  job.timer=setTimeout(()=>{
+    job.timer=null;if(s.strategyAutoReads.get(key)!==job||!strategyReadVisible(job))return;
+    void markStrategyRead({dataset:{owner:job.ownerUid,id:job.postId}},{automatic:true}).catch(()=>{});
+  },650);
+}
+function queueStrategyRead(ownerUid,postId){
+  if(!s.user||ownerUid===s.user.uid)return;
+  const key=participationKey(ownerUid,postId),post=s.friendPosts.find(p=>p.id===postId),card=[...document.querySelectorAll("details[data-strategy-post][open]")].find(el=>el.dataset.strategyOwner===ownerUid&&el.dataset.strategyPost===postId),target=card?.querySelector(".strategy-reason");
+  if(!post?.published||!target){stopAutoStrategyRead(ownerUid,postId);return;}
+  let job=s.strategyAutoReads.get(key);
+  if(job&&(job.card!==card||job.version!==post.updatedAt||job.session!==s.session)){stopAutoStrategyRead(ownerUid,postId);job=null;}
+  if(!job){
+    job={ownerUid,postId,card,target,version:post.updatedAt,session:s.session,uid:s.user.uid,timer:null};s.strategyAutoReads.set(key,job);
+    if(typeof IntersectionObserver!=="undefined"){job.observer=new IntersectionObserver(()=>armStrategyRead(job));job.observer.observe(target);}
   }
-  if(session!==s.session||user.uid!==s.user?.uid)return;
-  const key=participationKey(ownerUid,postId);s.strategyReads[key]=[...(s.strategyReads[key]||[]).filter(row=>row.uid!==user.uid),entry];
-  updateStrategyReadPanel(ownerUid,postId);toast("已標記閱讀這次更新。");
+  armStrategyRead(job);
+}
+function resumeStrategyReads(retry=false){
+  for(const [key,job]of s.strategyAutoReads)if(!job.card.isConnected||!job.card.open)stopAutoStrategyRead(job.ownerUid,job.postId);else{if(retry)delete s.strategyAutoReadErrors[key];armStrategyRead(job);}
+}
+async function markStrategyRead(button,{automatic=false}={}){
+  const session=s.session,user=s.user,demo=s.demo,ownerUid=button.dataset.owner,postId=button.dataset.id,posts=ownerUid===user?.uid?s.ownPosts:s.friendPosts,post=posts.find(p=>p.id===postId);
+  if(!user||!post?.published)throw new Error("請重新開啟策略後再確認已讀。");
+  const key=participationKey(ownerUid,postId),version=post.updatedAt,writeKey=JSON.stringify([session,user.uid,key,version]);
+  if(s.strategyReads[key]?.some(row=>row.uid===user.uid&&row.strategyUpdatedAt===version))return;
+  if(s.strategyReadWrites.has(writeKey))return s.strategyReadWrites.get(writeKey);
+  const writing=(async()=>{
+    try{
+      const entry=await Promise.resolve().then(()=>session!==s.session||user.uid!==s.user?.uid?null:demo?{uid:user.uid,strategyUpdatedAt:version,displayName:user.displayName||"使用者",photoURL:user.photoURL||"",readAt:new Date().toISOString()}:cloud.markStrategyRead(user,ownerUid,postId,version));
+      const current=(ownerUid===s.user?.uid?s.ownPosts:s.friendPosts).find(p=>p.id===postId);
+      if(session!==s.session||user.uid!==s.user?.uid||(ownerUid!==user.uid&&s.friend!==ownerUid)||current?.updatedAt!==version)return;
+      s.strategyReads[key]=[...(s.strategyReads[key]||[]).filter(row=>row.uid!==user.uid),entry];delete s.strategyAutoReadErrors[key];
+      updateStrategyReadPanel(ownerUid,postId);if(!automatic)toast("已記錄閱讀這次更新。");
+    }catch(error){
+      if(session!==s.session||user.uid!==s.user?.uid||(ownerUid!==user.uid&&s.friend!==ownerUid))return;
+      const current=(ownerUid===user.uid?s.ownPosts:s.friendPosts),index=current.findIndex(p=>p.id===postId);
+      if(index>=0&&current[index].updatedAt===version){
+        if(error.latestPost){current[index]=error.latestPost;render();}
+        else if(automatic){s.strategyAutoReadErrors[key]=version;updateStrategyReadPanel(ownerUid,postId);}
+      }
+      throw error;
+    }finally{s.strategyReadWrites.delete(writeKey);}
+  })();
+  s.strategyReadWrites.set(writeKey,writing);return writing;
 }
 function syncStrategyList(){
   const ownerUid=s.friend==="self"?s.user?.uid:s.friend,friend=s.friends.find(item=>item.id===ownerUid);
@@ -234,8 +288,7 @@ function syncStrategyList(){
 function completionPreview(post){
   const record=strategyCompletion(post);if(!record)return post.status==="closed"?'<p class="small muted">已完成 · 尚未填寫結單結果</p>':"";
   const label={profit:"獲利",loss:"虧損",flat:"損益兩平"}[record.outcome],kind=record.outcome==="profit"?"up":record.outcome==="loss"?"down":"muted";
-  const amount=record.amount==null?"金額未填":(record.outcome==="profit"?"+":record.outcome==="loss"?"−":"")+(record.currency==="USD"?"US$ ":"NT$ ")+num(record.amount,2);
-  return `<div class="strategy-result-preview"><span class="${kind}">${label} · ${amount}</span><time datetime="${record.closedOn}">${record.closedOn.replaceAll("-","/")} 結單</time></div>`;
+  return `<div class="strategy-result-preview"><span class="${kind}">${label}</span><time datetime="${record.closedOn}">${record.closedOn.replaceAll("-","/")} 結單</time></div>`;
 }
 function completionRecord(post){
   if(post.status!=="closed")return "";const record=strategyCompletion(post);
@@ -280,14 +333,14 @@ function settingsPage(){return `${heading("目標、資料與分享，都由你�
   <section class="card"><div class="card-header"><div><div class="eyebrow">KEEP A COPY</div><h2>資料備份</h2></div>${icon("download")}</div><p class="small muted">匯出持倉、策略、目標與歷史紀錄。JSON 可重新匯入；匯出不包含 API 金鑰與分享授權。</p><div class="settings-buttons" style="margin-top:20px"><button class="button secondary" data-action="export-json">JSON 備份</button><button class="button secondary" data-action="export-csv">CSV 持倉</button><button class="button secondary" data-action="import">匯入備份</button></div><input type="file" id="importFile" accept=".json,application/json" class="hidden"><p class="small muted" style="margin-top:18px">新版 ${VERSION} · 每日紀錄以 Asia/Taipei 為準</p></section>${installCard()}</div>`;}
 
 
-function render(force=false){if(!s.user)return;$("breadcrumb").textContent="我的資產 / "+PAGES[s.page][0];$("localDate").textContent=taipeiDay();updateHeaderHtml($("userAvatar"),avatarContent());$("userAvatar").classList.toggle("has-photo",!!googlePhotoUrl(s.user.photoURL));updateHeaderHtml($("navigation"),Object.entries(PAGES).map(([key,[title]])=>`<button data-page="${key}" aria-label="${esc(title)}" class="${s.page===key?"active":""}" ${s.page===key?'aria-current="page"':""}>${icon(key)}<span>${key==="assets"?"持倉":key==="sharing"?"共享":key==="history"?"紀錄":title}</span></button>`).join(""));$("sidebarStatus").textContent=s.demo?"示範資料":"雲端同步";if(s.page==="settings"&&s.settingsDirty&&!force)return;const renders={home,assets:assetsPage,sharing,history:historyPage,settings:settingsPage};const openStrategies=new Set([...document.querySelectorAll("details[data-strategy-post][open]")].map(el=>participationKey(el.dataset.strategyOwner,el.dataset.strategyPost)));const openReads=new Set([...document.querySelectorAll("[data-read-details][open]")].map(el=>participationKey(el.dataset.owner,el.dataset.post)));const rendered=renders[s.page]();$("content").innerHTML=s.page==="settings"?rendered.replace(/<\/div>$/,notificationSettings()+"</div>"):rendered;for(const card of document.querySelectorAll("details[data-strategy-post]"))if(openStrategies.has(participationKey(card.dataset.strategyOwner,card.dataset.strategyPost)))card.open=true;for(const detail of document.querySelectorAll("[data-read-details]"))if(openReads.has(participationKey(detail.dataset.owner,detail.dataset.post)))detail.open=true;for(const [key,off] of [...s.participationUnsubs]){const open=[...document.querySelectorAll("details[data-strategy-post][open]")].some(el=>participationKey(el.dataset.strategyOwner,el.dataset.strategyPost)===key);if(!open){off();s.participationUnsubs.delete(key);}}for(const [key,off] of [...s.strategyReadUnsubs]){const open=[...document.querySelectorAll("details[data-strategy-post][open]")].some(el=>participationKey(el.dataset.strategyOwner,el.dataset.strategyPost)===key);if(!open){off();s.strategyReadUnsubs.delete(key);}}for(const card of document.querySelectorAll("details[data-strategy-post][open]")){subscribeParticipation(card.dataset.strategyOwner,card.dataset.strategyPost);subscribeStrategyReads(card.dataset.strategyOwner,card.dataset.strategyPost);}syncStrategyList();}
+function render(force=false){if(!s.user)return;$("breadcrumb").textContent="我的資產 / "+PAGES[s.page][0];$("localDate").textContent=taipeiDay();updateHeaderHtml($("userAvatar"),avatarContent());$("userAvatar").classList.toggle("has-photo",!!googlePhotoUrl(s.user.photoURL));updateHeaderHtml($("navigation"),Object.entries(PAGES).map(([key,[title]])=>`<button data-page="${key}" aria-label="${esc(title)}" class="${s.page===key?"active":""}" ${s.page===key?'aria-current="page"':""}>${icon(key)}<span>${key==="assets"?"持倉":key==="sharing"?"共享":key==="history"?"紀錄":title}</span></button>`).join(""));$("sidebarStatus").textContent=s.demo?"示範資料":"雲端同步";if(s.page==="settings"&&s.settingsDirty&&!force)return;const renders={home,assets:assetsPage,sharing,history:historyPage,settings:settingsPage};const openStrategies=new Set([...document.querySelectorAll("details[data-strategy-post][open]")].map(el=>participationKey(el.dataset.strategyOwner,el.dataset.strategyPost)));const openReads=new Set([...document.querySelectorAll("[data-read-details][open]")].map(el=>participationKey(el.dataset.owner,el.dataset.post)));const rendered=renders[s.page]();$("content").innerHTML=s.page==="settings"?rendered.replace(/<\/div>$/,notificationSettings()+"</div>"):rendered;for(const card of document.querySelectorAll("details[data-strategy-post]"))if(openStrategies.has(participationKey(card.dataset.strategyOwner,card.dataset.strategyPost)))card.open=true;for(const detail of document.querySelectorAll("[data-read-details]"))if(openReads.has(participationKey(detail.dataset.owner,detail.dataset.post)))detail.open=true;for(const [key,off] of [...s.participationUnsubs]){const open=[...document.querySelectorAll("details[data-strategy-post][open]")].some(el=>participationKey(el.dataset.strategyOwner,el.dataset.strategyPost)===key);if(!open){off();s.participationUnsubs.delete(key);}}for(const [key,off] of [...s.strategyReadUnsubs]){const open=[...document.querySelectorAll("details[data-strategy-post][open]")].some(el=>participationKey(el.dataset.strategyOwner,el.dataset.strategyPost)===key);if(!open){off();s.strategyReadUnsubs.delete(key);}}resumeStrategyReads();for(const card of document.querySelectorAll("details[data-strategy-post][open]")){subscribeParticipation(card.dataset.strategyOwner,card.dataset.strategyPost);subscribeStrategyReads(card.dataset.strategyOwner,card.dataset.strategyPost);}syncStrategyList();}
 function syncSelection(){if(s.shareDirty)return;s.selected=(s.published.assets||[]).map(a=>a.id);s.portfolioViewers=[...(s.published.viewerUids||[])];s.strategyViewers=[...(s.strategyAccess.viewerUids||[])];}
 async function setPage(page){if(!PAGES[page])return;if(s.settingsDirty&&page!=="settings"&&!await confirm("離開設定？","未儲存的表單內容會捨棄。","離開"))return;s.settingsDirty=false;s.dirtyForms.clear();strategyNotificationRoute++;s.notificationTarget=null;s.page=page;location.hash=page;render(true);window.scrollTo({top:0,behavior:"instant"});if(page==="sharing")await loadSharing();else void autoRefreshQuotes();}
 function confirm(title,text,label="確認"){return new Promise(resolve=>{$("confirmTitle").textContent=title;$("confirmText").textContent=text;$("confirmAction").textContent=label;pendingConfirmation=resolve;$("confirmDialog").showModal();});}
 $("confirmAction").onclick=()=>{const fn=pendingConfirmation;pendingConfirmation=null;$("confirmDialog").close();fn?.(true);};
 $("confirmDialog").addEventListener("close",()=>{if(pendingConfirmation){pendingConfirmation(false);pendingConfirmation=null;}});
 
-function stopSession(){strategyNotificationRoute++;s.notificationTarget=null;quoteRefreshJob=null;s.lastQuoteAttempt=0;s.lastQuoteSignature="";s.quoteRefreshError="";for(const off of s.participationUnsubs.values())off();s.participationUnsubs.clear();s.participation={};s.participationErrors={};s.strategyReadUnsubs.forEach(off=>off());s.strategyReadUnsubs.clear();s.strategyReads={};s.strategyReadErrors={};s.strategyListOff?.();s.strategyListOff=null;s.strategyListKey="";s.strategyListGeneration++;s.strategyListRevision=0;s.reviews={};s.reviewHistory={};s.reviewActor="author";s.session++;completingPost=null;editingPost=null;s.strategyStatus="open";s.assets=[];s.history=[];s.settings={...DEFAULT_SETTINGS};s.published={assets:[],viewerUids:[]};s.strategyAccess={viewerUids:[]};s.friends=[];s.ownPosts=[];s.friendPosts=[];s.invites={sent:[],received:[]};s.friend="self";s.selected=[];s.portfolioViewers=[];s.strategyViewers=[];s.inviteEmail="";s.subscriptions.forEach(fn=>fn());s.subscriptions=[];s.user=null;s.historyArchivePage=0;s.historyArchiveOpen=false;s.refreshing=false;s.settingsDirty=false;s.dirtyForms.clear();s.adminUsers=[];s.shareDirty=false;for(const name of ["assetDialog","strategyDialog","completionDialog","confirmDialog"]){if($(name).open)$(name).close();}}
+function stopSession(){strategyNotificationRoute++;s.notificationTarget=null;quoteRefreshJob=null;s.lastQuoteAttempt=0;s.lastQuoteSignature="";s.quoteRefreshError="";for(const off of s.participationUnsubs.values())off();s.participationUnsubs.clear();s.participation={};s.participationErrors={};for(const job of [...s.strategyAutoReads.values()])stopAutoStrategyRead(job.ownerUid,job.postId);s.strategyReadWrites.clear();s.strategyAutoReadErrors={};s.strategyReadUnsubs.forEach(off=>off());s.strategyReadUnsubs.clear();s.strategyReads={};s.strategyReadErrors={};s.strategyListOff?.();s.strategyListOff=null;s.strategyListKey="";s.strategyListGeneration++;s.strategyListRevision=0;s.reviews={};s.reviewHistory={};s.reviewActor="author";s.session++;completingPost=null;editingPost=null;s.strategyStatus="open";s.assets=[];s.history=[];s.settings={...DEFAULT_SETTINGS};s.published={assets:[],viewerUids:[]};s.strategyAccess={viewerUids:[]};s.friends=[];s.ownPosts=[];s.friendPosts=[];s.invites={sent:[],received:[]};s.friend="self";s.selected=[];s.portfolioViewers=[];s.strategyViewers=[];s.inviteEmail="";s.subscriptions.forEach(fn=>fn());s.subscriptions=[];s.user=null;s.historyArchivePage=0;s.historyArchiveOpen=false;s.refreshing=false;s.settingsDirty=false;s.dirtyForms.clear();s.adminUsers=[];s.shareDirty=false;for(const name of ["assetDialog","strategyDialog","completionDialog","confirmDialog"]){if($(name).open)$(name).close();}}
 function showLogin(){stopSession();setLoginState("idle");$("appView").classList.add("hidden");$("pendingView").classList.add("hidden");$("loginView").classList.remove("hidden");}
 function showApp(){setLoginState("idle");const initial=location.hash.slice(1).split("?")[0];s.page=PAGES[initial]?initial:"home";$("loginView").classList.add("hidden");$("pendingView").classList.add("hidden");$("appView").classList.remove("hidden");$("demoBanner").classList.toggle("hidden",!s.demo);render(true);}
 async function startUser(user){if(s.demo)return;stopSession();if(!user){showLogin();return;}s.user=user;const session=s.session;setLoginState("loading");try{const status=await cloud.checkAccess(user);if(session!==s.session)return;if(status!=="approved"){setLoginState("idle");$("loginView").classList.add("hidden");$("appView").classList.add("hidden");$("pendingView").classList.remove("hidden");$("pendingMessage").textContent=status==="denied"?"你的使用申請已被拒絕，請聯絡擁有者。":"已送出使用申請。擁有者核准後，按重新檢查即可使用。";return;}const loaded=await cloud.loadUser(user);if(session!==s.session)return;Object.assign(s,loaded);const guard=fn=>(...args)=>{if(session===s.session)fn(...args);};s.lastRefresh=0;syncSelection();showApp();void notifications.appOpened();s.subscriptions=cloud.listenUser(user.uid,{assets:guard(assets=>{s.assets=assets;render();}),history:guard(history=>{s.history=history;render();}),settings:guard(settings=>{s.settings=settings;render();}),published:guard(value=>{s.published=value;syncSelection();render();}),strategyAccess:guard(value=>{s.strategyAccess=value;syncSelection();render();}),error:guard(e=>toast(message(e),true))});s.subscriptions.push(...cloud.listenFriends(user.uid,guard(friends=>{s.friends=mergeFriendQuotes(friends);if(s.friend!=="self"&&!friends.some(f=>f.id===s.friend)){s.friend="self";s.friendPosts=[];}else if(s.friend!=="self"&&!friends.find(f=>f.id===s.friend)?.strategyAccess){s.friendPosts=[];}render();void autoRefreshQuotes();}),guard(e=>toast(message(e),true))));s.subscriptions.push(...cloud.listenInvitations(user,guard(invites=>{s.invites=invites;if(s.page==="sharing")render();}),guard(e=>toast(message(e),true))));const notificationLink=parseStrategyNotification(location.hash);if(notificationLink)await openStrategyNotification(notificationLink);if(session!==s.session)return;await refreshOwn(false,true);if(session===s.session)await saveSnapshot(false);if(s.page==="sharing")await loadSharing();}catch(e){if(session!==s.session)return;setLoginState("error",message(e));$("loginView").classList.remove("hidden");$("appView").classList.add("hidden");}}
@@ -419,15 +472,11 @@ $("strategyForm").onsubmit=e=>{e.preventDefault();const f=e.currentTarget;task(f
   if(!s.demo&&post.published){try{const delivery=await notifications.strategyPublished(post);if(session!==s.session)return;if(delivery?.reason==="no-enabled-devices")toast("策略已分享；勾選的朋友尚未啟用策略通知。");}catch(error){if(session===s.session)toast("策略已儲存，但通知傳送失敗："+message(error),true);}}
 },$("strategyError"));};
 
-function syncCompletionOutcome(){
-  const f=$("completionForm"),flat=f.elements.outcome.value==="flat";f.elements.amount.readOnly=flat;
-  if(flat)f.elements.amount.value="0";else if(f.elements.amount.value==="0")f.elements.amount.value="";
-}
 function openCompletion(postId){
   const post=s.ownPosts.find(p=>p.id===postId);if(!post)throw new Error("找不到這份策略，請重新整理。");
   completingPost={...post};const record=strategyCompletion(post),f=$("completionForm");f.reset();
-  f.elements.outcome.value=record?.outcome||"";f.elements.amount.value=record?.amount??"";f.elements.currency.value=record?.currency||"TWD";f.elements.closedOn.value=record?.closedOn||taipeiDay();f.elements.closedOn.max=taipeiDay();f.elements.note.value=record?.note||"";
-  syncCompletionOutcome();$("completionDialogTitle").textContent=record?"編輯結單":"完成結單";$("completionStrategyName").textContent=post.symbol+" · "+post.title;$("completionError").textContent="";$("completionDialog").showModal();
+  f.elements.outcome.value=record?.outcome||"";f.elements.closedOn.value=record?.closedOn||taipeiDay();f.elements.closedOn.max=taipeiDay();f.elements.note.value=record?.note||"";
+  $("completionDialogTitle").textContent=record?"編輯結單":"完成結單";$("completionStrategyName").textContent=post.symbol+" · "+post.title;$("completionError").textContent="";$("completionDialog").showModal();
 }
 async function saveCompletion(fields){
   const before=completingPost,user=s.user,session=s.session;if(!user||!before||!s.ownPosts.some(p=>p.id===before.id))throw new Error("這份策略已變更或刪除，請重新開啟。");
@@ -525,7 +574,7 @@ document.addEventListener("click",async e=>{const button=e.target.closest("butto
 });});
 document.addEventListener("toggle",e=>{if(e.target.id==="olderHistory"&&e.target.isConnected)s.historyArchiveOpen=e.target.open;const card=e.target.closest?.("details[data-strategy-post]");if(card&&card.isConnected){if(card.open){subscribeParticipation(card.dataset.strategyOwner,card.dataset.strategyPost);subscribeStrategyReads(card.dataset.strategyOwner,card.dataset.strategyPost);}else{if(s.notificationTarget?.ownerUid===card.dataset.strategyOwner&&s.notificationTarget?.postId===card.dataset.strategyPost)s.notificationTarget=null;stopParticipation(card.dataset.strategyOwner,card.dataset.strategyPost);stopStrategyReads(card.dataset.strategyOwner,card.dataset.strategyPost);}}},true);
 document.addEventListener("input",e=>{if(e.target.id==="adminSearch"){const card=$("adminCard"),caret=e.target.selectionStart;renderAdminUsers(card,s.adminUsers||[],e.target.value);const input=card.querySelector?.("#adminSearch");input?.focus();if(input&&caret!=null)input.setSelectionRange(caret,caret);}if(e.target.id==="assetSearch"){s.search=e.target.value;$("assetRows").innerHTML=assetRows(filteredAssets());}const dirtyForm=e.target.closest("#goalForm,#keyForm");if(dirtyForm){s.dirtyForms.add(dirtyForm.id);s.settingsDirty=true;}if(e.target.closest("#inviteForm"))s.inviteEmail=e.target.value;});
-document.addEventListener("change",e=>{const el=e.target;if(el.name==="outcome"&&el.closest("#completionForm"))syncCompletionOutcome();if(el.matches?.("[data-strategy-recipient]")){const count=$("strategyForm").querySelectorAll("[data-strategy-recipient]:checked").length;$("strategyAudienceCount").textContent="已選 "+count+" 位";}for(const [key,target] of [["shareAsset","selected"],["portfolioViewer","portfolioViewers"],["strategyViewer","strategyViewers"]])if(el.dataset[key]){const value=el.dataset[key];s[target]=el.checked?[...new Set([...s[target],value])]:s[target].filter(x=>x!==value);s.shareDirty=true;}if(el.id==="sharedAssetFilter"){s.sharedFilter=el.value;refreshSharedRows();}if(el.id==="sharedAssetSort"){s.sharedSort=el.value;refreshSharedRows();}if(el.id==="assetFilter"){s.filter=el.value;$("assetRows").innerHTML=assetRows(filteredAssets());}if(el.id==="assetSort"){s.sort=el.value;$("assetRows").innerHTML=assetRows(filteredAssets());}if(el.dataset.notificationPref){const inputs=[...document.querySelectorAll("[data-notification-pref]")];const strategy=inputs.find(x=>x.dataset.notificationPref==="strategy")?.checked,daily=inputs.find(x=>x.dataset.notificationPref==="daily")?.checked;task(null,async()=>{await notifications.updateNotificationPreferences(strategy,daily);toast("通知偏好已儲存。");},null).catch(e=>toast(message(e),true));}if(el.id==="friendSelect"){strategyNotificationRoute++;s.notificationTarget=null;s.sharedFilter="all";s.sharedSort="value";s.strategyStatus="open";s.friend=el.value;s.friendPosts=[];render(true);task(null,()=>loadSharing());}if(el.id==="importFile"&&el.files[0])task(null,()=>importFile(el.files[0]));});
+document.addEventListener("change",e=>{const el=e.target;if(el.matches?.("[data-strategy-recipient]")){const count=$("strategyForm").querySelectorAll("[data-strategy-recipient]:checked").length;$("strategyAudienceCount").textContent="已選 "+count+" 位";}for(const [key,target] of [["shareAsset","selected"],["portfolioViewer","portfolioViewers"],["strategyViewer","strategyViewers"]])if(el.dataset[key]){const value=el.dataset[key];s[target]=el.checked?[...new Set([...s[target],value])]:s[target].filter(x=>x!==value);s.shareDirty=true;}if(el.id==="sharedAssetFilter"){s.sharedFilter=el.value;refreshSharedRows();}if(el.id==="sharedAssetSort"){s.sharedSort=el.value;refreshSharedRows();}if(el.id==="assetFilter"){s.filter=el.value;$("assetRows").innerHTML=assetRows(filteredAssets());}if(el.id==="assetSort"){s.sort=el.value;$("assetRows").innerHTML=assetRows(filteredAssets());}if(el.dataset.notificationPref){const inputs=[...document.querySelectorAll("[data-notification-pref]")];const strategy=inputs.find(x=>x.dataset.notificationPref==="strategy")?.checked,daily=inputs.find(x=>x.dataset.notificationPref==="daily")?.checked;task(null,async()=>{await notifications.updateNotificationPreferences(strategy,daily);toast("通知偏好已儲存。");},null).catch(e=>toast(message(e),true));}if(el.id==="friendSelect"){strategyNotificationRoute++;s.notificationTarget=null;s.sharedFilter="all";s.sharedSort="value";s.strategyStatus="open";s.friend=el.value;s.friendPosts=[];render(true);task(null,()=>loadSharing());}if(el.id==="importFile"&&el.files[0])task(null,()=>importFile(el.files[0]));});
 document.addEventListener("submit",e=>{const form=e.target;if(["assetForm","strategyForm","completionForm"].includes(form.id))return;if(!["goalForm","keyForm","inviteForm"].includes(form.id))return;e.preventDefault();task(form.querySelector('[type="submit"]'),async()=>{const fields=Object.fromEntries(new FormData(form));if(form.id==="goalForm"){const goal=Number(fields.goal),monthly=Number(fields.monthly);if(!fields.goal||!finite(goal)||goal<=0||!fields.monthly||!finite(monthly)||monthly<0||!/^\d{4}-\d{2}-\d{2}$/.test(fields.targetDate)||!finite(new Date(fields.targetDate).getTime()))throw new Error("請填有效的目標金額、日期與非負投入金額。");const settings={...s.settings,goal,monthly,targetDate:fields.targetDate};if(!s.demo)await cloud.saveSettings(s.user.uid,{goal,monthly,targetDate:fields.targetDate});s.settings=settings;s.dirtyForms.delete(form.id);s.settingsDirty=s.dirtyForms.size>0;toast("財務目標已更新。");render();}if(form.id==="keyForm"){const settings={...s.settings,finnhubKey:fields.key.trim()};if(!s.demo)await cloud.saveSettings(s.user.uid,{finnhubKey:settings.finnhubKey});s.settings=settings;s.dirtyForms.delete(form.id);s.settingsDirty=s.dirtyForms.size>0;toast("私人金鑰已儲存。");render();}if(form.id==="inviteForm"){const email=fields.email.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email===s.user.email.toLowerCase())throw new Error("請填朋友的有效 Google 帳號，不能邀請自己。");if(s.invites.sent.some(i=>i.recipientEmail===email))throw new Error("這個帳號已在邀請名單中。");if(s.demo)s.invites.sent.push({id:id(),recipientEmail:email,status:"pending",ownerUid:s.user.uid});else await cloud.invite(s.user.uid,email,s.user.displayName);s.inviteEmail="";toast("邀請已建立；對方登入後可接受。");await loadSharing();}});});
 window.addEventListener("hashchange",()=>{if(!s.user||$("appView").classList.contains("hidden"))return;const link=parseStrategyNotification(location.hash);if(link){void openStrategyNotification(link);return;}const page=location.hash.slice(1);if(PAGES[page]&&page!==s.page)setPage(page).catch(e=>toast(message(e),true));});
 // Additive poll and teacher review controls; original strategy copy remains untouched.
@@ -570,7 +619,10 @@ preventPageZoom();
 const AUTO_QUOTE_INTERVAL=60*1000;
 setInterval(()=>{void autoRefreshQuotes();},15*1000);
 setInterval(()=>{if(s.user&&!s.demo&&document.visibilityState==="visible")void notifications.appOpened();},5*60*1000);
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&s.user&&!s.demo){void notifications.appOpened();void autoRefreshQuotes();}});
+document.addEventListener("visibilitychange",()=>{resumeStrategyReads(document.visibilityState==="visible");if(document.visibilityState==="visible"&&s.user&&!s.demo){void notifications.appOpened();void autoRefreshQuotes();}});
+document.addEventListener("close",()=>resumeStrategyReads(),true);
+window.addEventListener("scroll",()=>resumeStrategyReads(),{passive:true});
+window.addEventListener("resize",()=>resumeStrategyReads(),{passive:true});
 function registerAppUpdates(){
   const wasControlled=Boolean(navigator.serviceWorker.controller);
   let updateReady=false,reloading=false;

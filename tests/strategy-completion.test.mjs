@@ -40,6 +40,18 @@ test('legacy closed strategies stay closed without inventing a financial result'
   assert.equal(strategyCompletion({...post,completion:fields}),null);
 });
 
+test('result-only completion requires no amount or currency and retains legacy values when correcting a note',()=>{
+  for(const outcome of ['profit','loss','flat']){
+    const done=applyStrategyCompletion(post,{outcome,closedOn:today,note:'心得'},'2026-10-22T08:00:00Z');
+    assert.equal(done.completion.outcome,outcome);assert.equal(done.completion.currency,'TWD');assert.equal(done.completion.amount,outcome==='flat'?0:null);
+  }
+  const legacy=applyStrategyCompletion(post,fields,'2026-10-22T08:00:00Z');
+  const corrected=applyStrategyCompletion(legacy,{outcome:'profit',closedOn:today,note:'修正心得'},'2026-10-22T09:00:00Z');
+  assert.equal(corrected.completion.amount,1250.5);assert.equal(corrected.completion.currency,'USD');
+  const changed=applyStrategyCompletion(corrected,{outcome:'loss',closedOn:today,note:''},'2026-10-22T10:00:00Z');
+  assert.equal(changed.completion.amount,null);assert.equal(changed.completion.outcome,'loss');
+});
+
 test('backup restores split fields and completed results privately without sharing grants',()=>{
   const done=applyStrategyCompletion(post,fields,'2026-10-22T08:00:00Z');
   const state={settings:{goal:1000,targetDate:'2030-01-01',monthly:0,finnhubKey:'SECRET'},assets:[],history:[],ownPosts:[done]};
